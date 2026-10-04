@@ -1,0 +1,60 @@
+{
+  "name": "cifrante",
+  "version": "0.1.0",
+  "description": "Lightweight cryptography, native when possible and portable by design",
+  "license": "MIT",
+  "author": "sanyok12345",
+  "homepage": "https://github.com/sanyok12345/cifrante",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sanyok12345/cifrante.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sanyok12345/cifrante/issues"
+  },
+  "keywords": [
+    "cryptography",
+    "crypto",
+    "hash",
+    "aes",
+    "rsa",
+    "hmac",
+    "pbkdf2",
+    "hkdf"
+  ],
+  "type": "module",
+  "main": "./dist/cifrante.node.cjs",
+  "module": "./dist/cifrante.mjs",
+  "types": "./dist/cifrante.d.mts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/cifrante.d.mts",
+        "node": "./dist/cifrante.node.mjs",
+        "default": "./dist/cifrante.mjs"
+      },
+      "require": {
+        "types": "./dist/cifrante.d.cts",
+        "node": "./dist/cifrante.node.cjs",
+        "default": "./dist/cifrante.cjs"
+      },
+      "default": "./dist/cifrante.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "tsdown": "^0.22.2",
+    "typescript": "^6.0.3"
+  }
+}
