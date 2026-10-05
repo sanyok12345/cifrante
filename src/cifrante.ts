@@ -1,5 +1,7 @@
 import { random } from './random.js'
 import { bytes } from './bytes.js'
+import { md5 } from './hash/md5.js'
+import { sha1 } from './hash/sha1.js'
 import { sha256 } from './hash/sha256.js'
 import { sha512 } from './hash/sha512.js'
 import {
@@ -12,7 +14,7 @@ import {
   AuthenticationError,
 } from './errors.js'
 
-export { random, bytes, sha256, sha512 }
+export { random, bytes, md5, sha1, sha256, sha512 }
 
 export {
   CifranteError,
@@ -32,6 +34,8 @@ export type { Hash, HashState } from './hash/hash.js'
 export default {
   random,
   bytes,
+  md5,
+  sha1,
   sha256,
   sha512,
   CifranteError,
