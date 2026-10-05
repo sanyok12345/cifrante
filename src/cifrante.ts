@@ -1,5 +1,7 @@
 import { random } from './random.js'
 import { bytes } from './bytes.js'
+import { sha256 } from './hash/sha256.js'
+import { sha512 } from './hash/sha512.js'
 import {
   CifranteError,
   InvalidInputError,
@@ -10,7 +12,7 @@ import {
   AuthenticationError,
 } from './errors.js'
 
-export { random, bytes }
+export { random, bytes, sha256, sha512 }
 
 export {
   CifranteError,
@@ -25,10 +27,13 @@ export {
 export type { Bytes, Binary, Data } from './types.js'
 export type { Random } from './random.js'
 export type { Codec, Utf8Codec, BytesAPI } from './bytes.js'
+export type { Hash, HashState } from './hash/hash.js'
 
 export default {
   random,
   bytes,
+  sha256,
+  sha512,
   CifranteError,
   InvalidInputError,
   UnsupportedError,
