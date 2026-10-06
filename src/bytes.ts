@@ -1,6 +1,6 @@
 import type { Binary, Data } from './types.js'
 import { InvalidInputError } from './errors.js'
-import { nativeEqual } from './platform/web.js'
+import { nativeEqual } from './native/web.js'
 
 export interface Codec {
   encode(data: Binary): string

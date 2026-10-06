@@ -1,6 +1,6 @@
 import { encodeBase64, encodeHex, toBytes } from '../bytes.js'
 import { InvalidInputError } from '../errors.js'
-import { nativeDigest, nativeHash } from '../platform/web.js'
+import { nativeDigest, nativeHash } from '../native/web.js'
 import type { Data } from '../types.js'
 
 export interface Hash {

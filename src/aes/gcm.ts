@@ -1,6 +1,6 @@
 import { toBinary, toBytes } from '../bytes.js'
 import { AuthenticationError, InvalidInputError, InvalidNonceError } from '../errors.js'
-import { nativeGcm } from '../platform/web.js'
+import { nativeGcm } from '../native/web.js'
 import type { Binary, Data } from '../types.js'
 import { AesBlock, keyBytes } from './block.js'
 

@@ -13,11 +13,11 @@ export default defineConfig(
     target: 'es2020',
     fixedExtension: true,
     alias: {
-      './platform/web.js': fileURLToPath(
-        new URL(`./src/platform/${platform}.ts`, import.meta.url),
+      './native/web.js': fileURLToPath(
+        new URL(`./src/native/${platform}.ts`, import.meta.url),
       ),
-      '../platform/web.js': fileURLToPath(
-        new URL(`./src/platform/${platform}.ts`, import.meta.url),
+      '../native/web.js': fileURLToPath(
+        new URL(`./src/native/${platform}.ts`, import.meta.url),
       ),
     },
     outputOptions: { exports: 'named' },

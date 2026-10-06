@@ -1,15 +1,16 @@
 import { bigIntToBytes, encodeBase64 } from '../bytes.js'
 import { AuthenticationError, UnsupportedError } from '../errors.js'
-import { lazy, rsaJwk } from './shared.js'
+import { lazy } from '../lazy.js'
+import { rsaJwk } from '../rsa-key.js'
 import type {
   NativeAead,
   NativeCipher,
   NativeHash,
   NativeOaep,
   NativeRsaKey,
-} from './shared.js'
+} from './types.js'
 
-export type { NativeHash, NativeSealed } from './shared.js'
+export type { NativeHash, NativeSealed } from './types.js'
 
 type WebKey = { subtle: SubtleCrypto; key: CryptoKey }
 

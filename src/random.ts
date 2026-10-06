@@ -1,4 +1,4 @@
-import { fillRandom } from './platform/web.js'
+import { fillRandom } from './native/web.js'
 import { assertLength, encodeHex, encodeBase64 } from './bytes.js'
 
 export interface Random {

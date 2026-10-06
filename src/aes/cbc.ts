@@ -1,6 +1,6 @@
 import { toBinary, toBytes } from '../bytes.js'
 import { AuthenticationError, InvalidInputError } from '../errors.js'
-import { nativeCipher } from '../platform/web.js'
+import { nativeCipher } from '../native/web.js'
 import type { Binary } from '../types.js'
 import type { Cipher } from './aes.js'
 import { AesBlock, ivBytes, keyBytes } from './block.js'

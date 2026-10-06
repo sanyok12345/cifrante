@@ -3,7 +3,7 @@ import { InvalidInputError, UnsupportedError } from './errors.js'
 import { sha1Sync } from './hash/sha1.js'
 import { createSyncHmac, hmacSha256Sync, hmacSha512Sync } from './hmac.js'
 import type { SyncHmac } from './hmac.js'
-import { nativeHkdf, nativePbkdf2 } from './platform/web.js'
+import { nativeHkdf, nativePbkdf2 } from './native/web.js'
 import type { Data } from './types.js'
 
 export type HashName = 'sha1' | 'sha256' | 'sha512'

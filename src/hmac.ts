@@ -3,7 +3,7 @@ import { AsyncDigest, SyncDigest } from './hash/hash.js'
 import type { DigestState, SyncHash, SyncHashState } from './hash/hash.js'
 import { sha256Sync } from './hash/sha256.js'
 import { sha512Sync } from './hash/sha512.js'
-import { nativeHmac, nativeMac } from './platform/web.js'
+import { nativeHmac, nativeMac } from './native/web.js'
 import type { Binary, Data } from './types.js'
 
 export interface Hmac {

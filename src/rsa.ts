@@ -11,8 +11,8 @@ import { sha1Sync } from './hash/sha1.js'
 import { sha256Sync } from './hash/sha256.js'
 import { sha512Sync } from './hash/sha512.js'
 import { math, randomBelow } from './math.js'
-import { inverseMod } from './platform/shared.js'
-import { nativeOaep, nativeRsaPrivate, nativeRsaPublic } from './platform/web.js'
+import { inverseMod } from './rsa-key.js'
+import { nativeOaep, nativeRsaPrivate, nativeRsaPublic } from './native/web.js'
 import { random } from './random.js'
 
 export interface RsaPublicKey {

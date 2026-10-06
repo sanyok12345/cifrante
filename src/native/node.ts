@@ -23,14 +23,15 @@ import {
   AuthenticationError,
   UnsupportedError,
 } from '../errors.js'
-import { lazy, rsaJwk } from './shared.js'
+import { lazy } from '../lazy.js'
+import { rsaJwk } from '../rsa-key.js'
 import type {
   NativeAead,
   NativeCipher,
   NativeHash,
   NativeOaep,
   NativeRsaKey,
-} from './shared.js'
+} from './types.js'
 
 export type {
   NativeAead,
@@ -39,7 +40,7 @@ export type {
   NativeOaep,
   NativeRsaKey,
   NativeSealed,
-} from './shared.js'
+} from './types.js'
 
 let hashes: Set<string> | undefined
 let ciphers: Set<string> | undefined
