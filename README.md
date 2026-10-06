@@ -32,16 +32,6 @@ const plaintext = await cipher.decrypt(sealed, { nonce })
 console.log(bytes.utf8.decode(plaintext))
 ```
 
-Keep the nonce with `sealed.ciphertext` and `sealed.tag`. Use a fresh nonce for
-every message encrypted with the same key, and keep the key secret.
-
-A default export is also available: `import cifrante from 'cifrante'`.
-
-Requires Node.js 18+ or an ES2020-compatible runtime. Random bytes require a
-platform-provided secure random source.
-
-The JavaScript cryptographic implementations have not been independently audited.
-
 ## License
 
 [MIT](LICENSE)
