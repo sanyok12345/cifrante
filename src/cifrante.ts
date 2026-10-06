@@ -7,6 +7,7 @@ import { sha512 } from './hash/sha512.js'
 import { aes } from './aes/aes.js'
 import { hmac } from './hmac.js'
 import { kdf } from './kdf.js'
+import { math } from './math.js'
 import {
   CifranteError,
   InvalidInputError,
@@ -17,7 +18,7 @@ import {
   AuthenticationError,
 } from './errors.js'
 
-export { random, bytes, md5, sha1, sha256, sha512, aes, hmac, kdf }
+export { random, bytes, md5, sha1, sha256, sha512, aes, hmac, kdf, math }
 
 export {
   CifranteError,
@@ -37,6 +38,7 @@ export type { AES, Cipher, CipherOptions } from './aes/aes.js'
 export type { GcmOptions, GcmOperationOptions, Sealed, AeadCipher } from './aes/gcm.js'
 export type { Hmac, HmacState, HMAC } from './hmac.js'
 export type { HashName, Pbkdf2Options, HkdfOptions, KDF } from './kdf.js'
+export type { Factors, MathCrypto } from './math.js'
 
 export default {
   random,
@@ -48,6 +50,7 @@ export default {
   aes,
   hmac,
   kdf,
+  math,
   CifranteError,
   InvalidInputError,
   UnsupportedError,
