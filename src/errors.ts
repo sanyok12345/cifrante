@@ -1,18 +1,31 @@
 export class CifranteError extends Error {
+  name = 'CifranteError'
+
   constructor(message: string) {
     super(message)
-    this.name = new.target.name
   }
 }
 
-export class InvalidInputError extends CifranteError {}
+export class InvalidInputError extends CifranteError {
+  name = 'InvalidInputError'
+}
 
-export class UnsupportedError extends CifranteError {}
+export class UnsupportedError extends CifranteError {
+  name = 'UnsupportedError'
+}
 
-export class InvalidKeyError extends CifranteError {}
+export class InvalidKeyError extends CifranteError {
+  name = 'InvalidKeyError'
+}
 
-export class InvalidIVError extends CifranteError {}
+export class InvalidIVError extends CifranteError {
+  name = 'InvalidIVError'
+}
 
-export class InvalidNonceError extends CifranteError {}
+export class InvalidNonceError extends CifranteError {
+  name = 'InvalidNonceError'
+}
 
-export class AuthenticationError extends CifranteError {}
+export class AuthenticationError extends CifranteError {
+  name = 'AuthenticationError'
+}
