@@ -5,6 +5,7 @@ import { createSyncHmac, hmacSha256Sync, hmacSha512Sync } from './hmac.js'
 import type { SyncHmac } from './hmac.js'
 import { nativeHkdf, nativePbkdf2 } from './native/web.js'
 import type { Data } from './types.js'
+import { pbkdf2Wasm } from './wasm/pbkdf2.js'
 
 export type HashName = 'sha1' | 'sha256' | 'sha512'
 
@@ -83,6 +84,12 @@ async function pbkdf2(password: Data, salt: Data, options: Pbkdf2Options): Promi
 
     if (native !== undefined) {
       return Uint8Array.from(native)
+    }
+
+    const wasm = pbkdf2Wasm(name, key, saltBytes, iterations, length)
+
+    if (wasm !== undefined) {
+      return wasm
     }
 
     const output = new Uint8Array(length)

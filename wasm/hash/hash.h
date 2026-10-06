@@ -16,6 +16,8 @@ typedef struct {
   uint32_t finalized;
 } Sha256;
 
+typedef Sha256 Sha1;
+
 typedef struct {
   uint64_t words[8];
   uint64_t length_low;
@@ -24,6 +26,10 @@ typedef struct {
   uint32_t buffered;
   uint32_t finalized;
 } Sha512;
+
+void sha1_init(Sha1 *state);
+uint32_t sha1_update(Sha1 *state, const uint8_t *input, size_t length);
+uint32_t sha1_finalize(Sha1 *state, uint8_t *output);
 
 void sha256_init(Sha256 *state);
 uint32_t sha256_update(Sha256 *state, const uint8_t *input, size_t length);
