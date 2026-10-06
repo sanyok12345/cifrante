@@ -77,8 +77,13 @@ function aesKey(name: string, secret: Uint8Array): () => Promise<WebKey | undefi
       return undefined
     }
 
-    const key = await supported(subtle, `${name}:key:${secret.length}`, () =>
-      subtle.importKey('raw', source(secret), name, false, ['encrypt', 'decrypt']),
+    const key = await supported(
+      subtle,
+      `${name}:key:${secret.length}`,
+      () => subtle.importKey('raw', source(secret), name, false, ['encrypt', 'decrypt']),
+      error => secret.length === 24 &&
+        errorName(error) === 'OperationError' &&
+        (error as { message?: unknown }).message === '192-bit AES keys are not supported',
     )
 
     return key ? { subtle, key } : undefined
