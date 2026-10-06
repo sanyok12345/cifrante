@@ -1,5 +1,7 @@
 import { toBinary, toBytes } from '../bytes.js'
 import { AuthenticationError, InvalidInputError, InvalidNonceError } from '../errors.js'
+import { lazy } from '../lazy.js'
+import { createAesWasm } from '../wasm/aes.js'
 import { nativeGcm } from '../native/web.js'
 import type { Binary, Data } from '../types.js'
 import { AesBlock, keyBytes } from './block.js'
@@ -150,6 +152,7 @@ export function gcm(
 
   const tagLength = tagBits / 8
   const native = nativeGcm(secret)
+  const prepareWasm = lazy(() => createAesWasm(secret))
   let block: AesBlock | undefined
   let hashKey: Uint8Array<ArrayBuffer>
 
@@ -235,6 +238,12 @@ export function gcm(
         return result
       }
 
+      const wasm = prepareWasm()
+
+      if (wasm) {
+        return wasm.encryptGcm(input, nonce, aad, tagLength)
+      }
+
       const j0 = initialCounter(nonce)
       const ciphertext = transform(input, j0)
       return { ciphertext, tag: authenticationTag(ciphertext, aad, j0) }
@@ -259,6 +268,12 @@ export function gcm(
 
       if (result !== undefined) {
         return result
+      }
+
+      const wasm = prepareWasm()
+
+      if (wasm) {
+        return wasm.decryptGcm(ciphertext, nonce, aad, tag)
       }
 
       const j0 = initialCounter(nonce)

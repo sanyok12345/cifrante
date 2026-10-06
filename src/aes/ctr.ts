@@ -1,5 +1,7 @@
 import { toBinary, toBytes } from '../bytes.js'
 import { InvalidInputError } from '../errors.js'
+import { lazy } from '../lazy.js'
+import { createAesWasm } from '../wasm/aes.js'
 import { nativeCipher } from '../native/web.js'
 import type { Binary } from '../types.js'
 import type { Cipher } from './aes.js'
@@ -8,6 +10,7 @@ import { AesBlock, ivBytes, keyBytes } from './block.js'
 export function ctr(key: Binary): Cipher {
   const secret = keyBytes(key)
   const native = nativeCipher('ctr', secret)
+  const prepare = lazy(() => createAesWasm(secret))
   let block: AesBlock | undefined
 
   async function transform(
@@ -31,6 +34,12 @@ export function ctr(key: Binary): Cipher {
 
     if (result !== undefined) {
       return result
+    }
+
+    const wasm = prepare()
+
+    if (wasm) {
+      return wasm.transform('ctr', data, initial, decrypt)
     }
 
     block ??= new AesBlock(secret)

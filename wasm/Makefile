@@ -6,7 +6,7 @@ LDFLAGS = -Wl,--no-entry -Wl,--export-memory -Wl,--strip-all -Wl,--compress-relo
   -Wl,--fatal-warnings -Wl,-z,stack-size=16384 \
   -Wl,--initial-memory=131072 -Wl,--max-memory=131072
 OUT_DIR = ../build/wasm
-MODULES = $(addprefix $(OUT_DIR)/,sha256.wasm sha512.wasm)
+MODULES = $(addprefix $(OUT_DIR)/,sha256.wasm sha512.wasm aes.wasm)
 HASH_HEADERS = hash/hash.h hash/buffer.h wasm.h
 
 all: $(MODULES)
@@ -16,6 +16,9 @@ $(OUT_DIR)/sha256.wasm: hash/sha256.c hash/wasm.c $(HASH_HEADERS) Makefile
 
 $(OUT_DIR)/sha512.wasm: CPPFLAGS += -DHASH_SHA512
 $(OUT_DIR)/sha512.wasm: hash/sha512.c hash/wasm.c $(HASH_HEADERS) Makefile
+
+$(OUT_DIR)/aes.wasm: aes/aes.c aes/modes.c aes/ige.c aes/cbc.c aes/ctr.c aes/gcm.c \
+  aes/aes.h aes/modes.h wasm.h Makefile
 
 $(MODULES): | $(OUT_DIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(filter %.c,$^) $(LDFLAGS) -o $@

@@ -3,9 +3,13 @@ import { InvalidInputError } from '../errors.js'
 import type { Binary } from '../types.js'
 import type { Cipher } from './aes.js'
 import { AesBlock, ivBytes, keyBytes } from './block.js'
+import { lazy } from '../lazy.js'
+import { createAesWasm } from '../wasm/aes.js'
 
 export function ige(key: Binary): Cipher {
-  const block = new AesBlock(keyBytes(key))
+  const secret = keyBytes(key)
+  const prepare = lazy(() => createAesWasm(secret))
+  let block: AesBlock | undefined
 
   function transform(
     data: Uint8Array,
@@ -15,6 +19,18 @@ export function ige(key: Binary): Cipher {
     if (data.length % 16 !== 0) {
       throw new InvalidInputError('AES-IGE input must contain complete 16-byte blocks')
     }
+
+    if (data.length === 0) {
+      return new Uint8Array()
+    }
+
+    const wasm = prepare()
+
+    if (wasm) {
+      return wasm.transform('ige', data, initial, decrypt)
+    }
+
+    block ??= new AesBlock(secret)
 
     const output = new Uint8Array(data.length)
     let previousCiphertext: Uint8Array = initial.subarray(0, 16)

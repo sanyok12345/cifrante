@@ -1,14 +1,59 @@
 import { toBinary, toBytes } from '../bytes.js'
 import { AuthenticationError, InvalidInputError } from '../errors.js'
+import { lazy } from '../lazy.js'
 import { nativeCipher } from '../native/web.js'
 import type { Binary } from '../types.js'
+import { createAesWasm } from '../wasm/aes.js'
 import type { Cipher } from './aes.js'
 import { AesBlock, ivBytes, keyBytes } from './block.js'
 
 export function cbc(key: Binary): Cipher {
   const secret = keyBytes(key)
   const native = nativeCipher('cbc', secret)
+  const prepare = lazy(() => createAesWasm(secret))
   let block: AesBlock | undefined
+
+  function transform(
+    data: Uint8Array,
+    initial: Uint8Array,
+    decrypt: boolean,
+  ): Uint8Array<ArrayBuffer> {
+    const wasm = prepare()
+
+    if (wasm) {
+      return wasm.transform('cbc', data, initial, decrypt)
+    }
+
+    block ??= new AesBlock(secret)
+
+    const output = new Uint8Array(data.length)
+    let previous: Uint8Array = initial
+    const mixed = new Uint8Array(16)
+
+    for (let offset = 0; offset < data.length; offset += 16) {
+      const input = data.subarray(offset, offset + 16)
+
+      if (decrypt) {
+        const result = block.decrypt(input)
+
+        for (let i = 0; i < 16; i++) {
+          output[offset + i] = result[i] ^ previous[i]
+        }
+
+        previous = input
+      } else {
+        for (let i = 0; i < 16; i++) {
+          mixed[i] = input[i] ^ previous[i]
+        }
+
+        previous = block.encrypt(mixed)
+        output.set(previous, offset)
+      }
+    }
+
+    mixed.fill(0)
+    return output
+  }
 
   return {
     async encrypt(data, options) {
@@ -20,28 +65,16 @@ export function cbc(key: Binary): Cipher {
         return result
       }
 
-      block ??= new AesBlock(secret)
-
       const padding = 16 - input.length % 16
       const padded = new Uint8Array(input.length + padding)
       padded.set(input)
       padded.fill(padding, input.length)
 
-      const output = new Uint8Array(padded.length)
-      let previous: Uint8Array = initial
-      const mixed = new Uint8Array(16)
-
-      for (let offset = 0; offset < padded.length; offset += 16) {
-        for (let i = 0; i < 16; i++) {
-          mixed[i] = padded[offset + i] ^ previous[i]
-        }
-
-        previous = block.encrypt(mixed)
-        output.set(previous, offset)
+      try {
+        return transform(padded, initial, false)
+      } finally {
+        padded.fill(0)
       }
-
-      padded.fill(0)
-      return output
     },
 
     async decrypt(data, options) {
@@ -60,22 +93,7 @@ export function cbc(key: Binary): Cipher {
         return decrypted
       }
 
-      block ??= new AesBlock(secret)
-
-      const output = new Uint8Array(input.length)
-      let previous: Uint8Array = initial
-
-      for (let offset = 0; offset < input.length; offset += 16) {
-        const ciphertext = input.subarray(offset, offset + 16)
-        const result = block.decrypt(ciphertext)
-
-        for (let i = 0; i < 16; i++) {
-          output[offset + i] = result[i] ^ previous[i]
-        }
-
-        previous = ciphertext
-      }
-
+      const output = transform(input, initial, true)
       const padding = output[output.length - 1]
       let invalid = Number(padding === 0 || padding > 16)
 
