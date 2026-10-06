@@ -118,7 +118,7 @@ export function encodeBase64(data: Binary): string {
   return result
 }
 
-function decodeBase64(data: string): Uint8Array<ArrayBuffer> {
+export function decodeBase64(data: string): Uint8Array<ArrayBuffer> {
   if (typeof data !== 'string' || data.length % 4 !== 0) {
     throw new InvalidInputError('Expected standard Base64 with canonical padding')
   }

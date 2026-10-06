@@ -49,7 +49,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "tsdown",
+    "build": "make -C wasm && tsdown",
     "prepack": "npm run build"
   },
   "devDependencies": {

@@ -1,4 +1,5 @@
 import { BlockHash, createHash, createSyncHash } from './hash.js'
+import { createSha256Wasm } from '../wasm/sha256.js'
 
 const K = /* @__PURE__ */ new Uint32Array([
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
@@ -81,5 +82,9 @@ class Sha256 extends BlockHash {
   }
 }
 
-export const sha256Sync = /* @__PURE__ */ createSyncHash('sha256', () => new Sha256())
+export const sha256Sync = /* @__PURE__ */ createSyncHash(
+  'sha256',
+  () => new Sha256(),
+  createSha256Wasm,
+)
 export const sha256 = /* @__PURE__ */ createHash('sha256', sha256Sync)

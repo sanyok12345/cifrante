@@ -108,8 +108,15 @@ class State extends AsyncDigest implements HashState {
   }
 }
 
-export function createSyncHash(name: string, createJS: () => DigestState): SyncHash {
-  const create = (): SyncHashState => new SyncDigest(nativeHash(name) ?? createJS(), 'Hash')
+export function createSyncHash(
+  name: string,
+  createJS: () => DigestState,
+  createWasm?: () => DigestState | undefined,
+): SyncHash {
+  const create = (): SyncHashState => new SyncDigest(
+    nativeHash(name) ?? createWasm?.() ?? createJS(),
+    'Hash',
+  )
   const hash = (data: Data): Uint8Array => create().update(data).digest()
 
   return Object.assign(hash, { create })

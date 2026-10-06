@@ -12,6 +12,7 @@ export default defineConfig(
     platform: platform === 'node' ? 'node' : 'browser',
     target: 'es2020',
     fixedExtension: true,
+    loader: { '.wasm': 'base64' },
     alias: {
       './native/web.js': fileURLToPath(
         new URL(`./src/native/${platform}.ts`, import.meta.url),

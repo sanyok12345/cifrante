@@ -1,4 +1,5 @@
 import { BlockHash, createHash, createSyncHash } from './hash.js'
+import { createSha512Wasm } from '../wasm/sha512.js'
 
 const K = /* @__PURE__ */ new Uint32Array([
   0x428a2f98, 0xd728ae22, 0x71374491, 0x23ef65cd,
@@ -172,5 +173,9 @@ class Sha512 extends BlockHash {
   }
 }
 
-export const sha512Sync = /* @__PURE__ */ createSyncHash('sha512', () => new Sha512())
+export const sha512Sync = /* @__PURE__ */ createSyncHash(
+  'sha512',
+  () => new Sha512(),
+  createSha512Wasm,
+)
 export const sha512 = /* @__PURE__ */ createHash('sha512', sha512Sync)
