@@ -1,6 +1,6 @@
 {
   "name": "cifrante",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Lightweight cryptography, native when possible and portable by design",
   "license": "MIT",
   "author": "sanyok12345",
