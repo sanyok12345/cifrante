@@ -98,13 +98,13 @@ const addon = /* @__PURE__ */ lazy((): NativeIge | undefined => {
     return undefined
   }
 
-  const require = createRequire(import.meta.url)
+  const load = createRequire(import.meta.url)
   const base = `@cifrante/${process.platform}-${process.arch}`
   const candidates = process.platform === 'linux' ? [`${base}-gnu`, `${base}-musl`] : [base]
 
   for (const candidate of candidates) {
     try {
-      const module = require(candidate) as NativeIge & { supported(): boolean }
+      const module = load(candidate) as NativeIge & { supported(): boolean }
 
       if (module.supported()) {
         return module
