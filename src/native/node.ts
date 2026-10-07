@@ -1,4 +1,5 @@
 import * as crypto from 'node:crypto'
+import { createRequire } from 'node:module'
 import {
   constants,
   createCipheriv,
@@ -29,6 +30,7 @@ import type {
   NativeAead,
   NativeCipher,
   NativeHash,
+  NativeIge,
   NativeOaep,
   NativeRsaKey,
   NativeSealed,
@@ -88,6 +90,34 @@ function adaptHash(hash: crypto.Hash | crypto.Hmac): NativeHash {
       return new Uint8Array(hash.digest())
     },
   }
+}
+
+const addon = /* @__PURE__ */ lazy((): NativeIge | undefined => {
+  if (process.env.CIFRANTE_NATIVE === '0') {
+    return undefined
+  }
+
+  const require = createRequire(import.meta.url)
+  const base = `@cifrante/${process.platform}-${process.arch}`
+  const candidates = process.platform === 'linux' ? [`${base}-gnu`, `${base}-musl`] : [base]
+
+  for (const candidate of candidates) {
+    try {
+      const module = require(candidate) as NativeIge & { supported(): boolean }
+
+      if (module.supported()) {
+        return module
+      }
+    } catch {
+      continue
+    }
+  }
+
+  return undefined
+})
+
+export function nativeIge(): NativeIge | undefined {
+  return addon()
 }
 
 export function nativeHash(name: string): NativeHash | undefined {

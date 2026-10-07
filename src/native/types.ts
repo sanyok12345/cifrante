@@ -46,6 +46,11 @@ export interface NativeAead {
   ): Uint8Array | undefined
 }
 
+export interface NativeIge {
+  encrypt(key: Uint8Array, iv: Uint8Array, input: Uint8Array, output: Uint8Array): void
+  decrypt(key: Uint8Array, iv: Uint8Array, input: Uint8Array, output: Uint8Array): void
+}
+
 export interface NativeRsaKey {
   n: bigint
   e?: bigint

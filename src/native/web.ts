@@ -6,6 +6,7 @@ import type {
   NativeAead,
   NativeCipher,
   NativeHash,
+  NativeIge,
   NativeOaep,
   NativeRsaKey,
 } from './types.js'
@@ -131,6 +132,10 @@ export function fillRandom(bytes: Uint8Array<ArrayBuffer>): void {
 }
 
 export function nativeHash(_name: string): NativeHash | undefined {
+  return undefined
+}
+
+export function nativeIge(): NativeIge | undefined {
   return undefined
 }
 
