@@ -238,12 +238,28 @@ export function nativeCipher(
     }
   }
 
+  function blocks(iv: Uint8Array, data: Uint8Array): Uint8Array | undefined {
+    if (mode !== 'cbc' || !supportsCipher(name)) {
+      return undefined
+    }
+
+    const cipher = createCipheriv(name, key, iv)
+    cipher.setAutoPadding(false)
+
+    const head = cipher.update(data)
+    const tail = cipher.final()
+
+    return tail.length === 0 ? head : concat(head, tail)
+  }
+
   return {
     available: () => supportsCipher(name),
     encrypt: async (iv, data) => operate(iv, data, false),
     decrypt: async (iv, data) => operate(iv, data, true),
     encryptSync: (iv, data) => operate(iv, data, false),
     decryptSync: (iv, data) => operate(iv, data, true),
+    encryptBlocks: async (iv, data) => blocks(iv, data),
+    encryptBlocksSync: blocks,
   }
 }
 

@@ -14,6 +14,8 @@ export interface NativeCipher {
   decrypt(iv: Uint8Array, data: Uint8Array): Promise<Uint8Array | undefined>
   encryptSync?(iv: Uint8Array, data: Uint8Array): Uint8Array | undefined
   decryptSync?(iv: Uint8Array, data: Uint8Array): Uint8Array | undefined
+  encryptBlocks?(iv: Uint8Array, data: Uint8Array): Promise<Uint8Array | undefined>
+  encryptBlocksSync?(iv: Uint8Array, data: Uint8Array): Uint8Array | undefined
 }
 
 export interface NativeAead {

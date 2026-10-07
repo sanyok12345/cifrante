@@ -296,6 +296,25 @@ export function nativeCipher(mode: 'cbc' | 'ctr', secret: Uint8Array): NativeCip
         mode === 'cbc' ? 'Invalid AES-CBC padding' : undefined,
       )
     },
+
+    async encryptBlocks(iv, data) {
+      if (mode !== 'cbc' || data.length % 16 !== 0) {
+        return undefined
+      }
+
+      const context = await prepare()
+
+      if (!context) {
+        return undefined
+      }
+
+      const { subtle, key } = context
+      const output = await supported(subtle, `${name}:encrypt:${secret.length}`, () =>
+        subtle.encrypt(parameters(iv), key, source(data)),
+      )
+
+      return output === undefined ? undefined : new Uint8Array(output, 0, data.length)
+    },
   }
 }
 
