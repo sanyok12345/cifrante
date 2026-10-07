@@ -9,11 +9,13 @@ export interface NativeSealed {
 }
 
 export interface NativeCipher {
+  available(): boolean
   encrypt(iv: Uint8Array, data: Uint8Array): Promise<Uint8Array | undefined>
   decrypt(iv: Uint8Array, data: Uint8Array): Promise<Uint8Array | undefined>
 }
 
 export interface NativeAead {
+  available(nonce: Uint8Array): boolean
   encrypt(
     nonce: Uint8Array,
     data: Uint8Array,

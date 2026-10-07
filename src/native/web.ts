@@ -142,6 +142,20 @@ export function nativeEqual(_a: Uint8Array, _b: Uint8Array): boolean | undefined
   return undefined
 }
 
+export function nativeDigestAvailable(name: string): boolean {
+  const hash = hashName(name)
+  const subtle = globalThis.crypto?.subtle
+
+  return !!hash && !!subtle && !unsupported?.get(subtle)?.has(`digest:${hash}`)
+}
+
+export function nativeMacAvailable(name: string, secret: Uint8Array): boolean {
+  const hash = hashName(name)
+  const subtle = globalThis.crypto?.subtle
+
+  return !!hash && !!subtle && secret.length > 0 && !unsupported?.get(subtle)?.has(`HMAC:${hash}`)
+}
+
 export async function nativeDigest(
   name: string,
   data: Uint8Array,
@@ -246,6 +260,12 @@ export function nativeCipher(mode: 'cbc' | 'ctr', secret: Uint8Array): NativeCip
   }
 
   return {
+    available() {
+      const subtle = globalThis.crypto?.subtle
+
+      return !!subtle && !unsupported?.get(subtle)?.has(`${name}:key:${secret.length}`)
+    },
+
     async encrypt(iv, data) {
       const context = await prepare()
 
@@ -292,6 +312,13 @@ export function nativeGcm(secret: Uint8Array): NativeAead {
   }
 
   return {
+    available(nonce) {
+      const subtle = globalThis.crypto?.subtle
+
+      return !!subtle && nonce.length >= 12 && nonce.length <= 128
+        && !unsupported?.get(subtle)?.has(`AES-GCM:key:${secret.length}`)
+    },
+
     async encrypt(nonce, data, aad, tagLength) {
       if (nonce.length < 12 || nonce.length > 128) {
         return undefined

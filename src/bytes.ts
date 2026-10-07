@@ -50,6 +50,25 @@ export function toBytes(data: Data): Uint8Array<ArrayBuffer> {
   return typeof data === 'string' ? encodeUtf8(data) : toBinary(data)
 }
 
+export function toBinaryView(data: Binary): Uint8Array {
+  try {
+    if (ArrayBuffer.isView(data)) {
+      return data instanceof Uint8Array && data.byteLength > 0
+        ? data
+        : new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+    }
+
+    arrayBufferLength.call(data)
+    return new Uint8Array(data as ArrayBuffer)
+  } catch {
+    throw new InvalidInputError('Expected an ArrayBuffer or an ArrayBuffer view')
+  }
+}
+
+export function toBytesView(data: Data): Uint8Array {
+  return typeof data === 'string' ? encodeUtf8(data) : toBinaryView(data)
+}
+
 export function bytesToBigInt(data: Uint8Array): bigint {
   let value = 0n
 

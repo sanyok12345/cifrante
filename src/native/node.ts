@@ -97,6 +97,14 @@ export function nativeHmac(name: string, key: Uint8Array): NativeHash | undefine
   return supportsHash(name) ? adaptHash(createHmac(name, key)) : undefined
 }
 
+export function nativeDigestAvailable(name: string): boolean {
+  return supportsHash(name)
+}
+
+export function nativeMacAvailable(name: string, _secret: Uint8Array): boolean {
+  return supportsHash(name)
+}
+
 export async function nativeDigest(
   name: string,
   data: Uint8Array,
@@ -230,6 +238,7 @@ export function nativeCipher(
   }
 
   return {
+    available: () => supportsCipher(name),
     encrypt: (iv, data) => operate(iv, data, false),
     decrypt: (iv, data) => operate(iv, data, true),
   }
@@ -240,6 +249,8 @@ export function nativeGcm(key: Uint8Array): NativeAead {
   const prepare = lazy(() => supportsCipher(name) ? createSecretKey(key) : undefined)
 
   return {
+    available: (nonce) => supportsCipher(name) && nonce.length <= 128,
+
     async encrypt(nonce, data, aad, tagLength) {
       const secret = prepare()
 
