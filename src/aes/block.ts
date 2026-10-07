@@ -1,4 +1,4 @@
-import { toBinary } from '../bytes.js'
+import { toBinary, toBinaryView } from '../bytes.js'
 import { InvalidInputError, InvalidIVError, InvalidKeyError } from '../errors.js'
 import type { Binary } from '../types.js'
 import type { CipherOptions } from './aes.js'
@@ -72,15 +72,15 @@ export function keyBytes(key: Binary): Uint8Array<ArrayBuffer> {
   return bytes
 }
 
-export function ivBytes(options: CipherOptions, length: number): Uint8Array<ArrayBuffer> {
+export function ivBytes(options: CipherOptions, length: number, copy = true): Uint8Array {
   if (!options || typeof options !== 'object' || Array.isArray(options)) {
     throw new InvalidInputError('AES operation requires IV options')
   }
 
-  let bytes: Uint8Array<ArrayBuffer>
+  let bytes: Uint8Array
 
   try {
-    bytes = toBinary(options.iv)
+    bytes = copy ? toBinary(options.iv) : toBinaryView(options.iv)
   } catch (error) {
     if (error instanceof InvalidInputError) {
       throw new InvalidIVError('AES IV must be binary data')

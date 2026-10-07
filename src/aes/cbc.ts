@@ -1,4 +1,4 @@
-import { toBinary, toBytes } from '../bytes.js'
+import { toBinary, toBinaryView, toBytes, toBytesView } from '../bytes.js'
 import { AuthenticationError, InvalidInputError } from '../errors.js'
 import { lazy } from '../lazy.js'
 import { nativeCipher } from '../native/web.js'
@@ -57,12 +57,16 @@ export function cbc(key: Binary): Cipher {
 
   return {
     async encrypt(data, options) {
-      const input = toBytes(data)
-      const initial = ivBytes(options, 16)
-      const result = await native.encrypt(initial, input)
+      const useNative = native.available()
+      const input = useNative ? toBytes(data) : toBytesView(data)
+      const initial = ivBytes(options, 16, useNative)
 
-      if (result !== undefined) {
-        return result
+      if (useNative) {
+        const result = await native.encrypt(initial, input)
+
+        if (result !== undefined) {
+          return result
+        }
       }
 
       const padding = 16 - input.length % 16
@@ -78,8 +82,9 @@ export function cbc(key: Binary): Cipher {
     },
 
     async decrypt(data, options) {
-      const input = toBinary(data)
-      const initial = ivBytes(options, 16)
+      const useNative = native.available()
+      const input = useNative ? toBinary(data) : toBinaryView(data)
+      const initial = ivBytes(options, 16, useNative)
 
       if (input.length === 0 || input.length % 16 !== 0) {
         throw new InvalidInputError(
@@ -87,10 +92,12 @@ export function cbc(key: Binary): Cipher {
         )
       }
 
-      const decrypted = await native.decrypt(initial, input)
+      if (useNative) {
+        const decrypted = await native.decrypt(initial, input)
 
-      if (decrypted !== undefined) {
-        return decrypted
+        if (decrypted !== undefined) {
+          return decrypted
+        }
       }
 
       const output = transform(input, initial, true)

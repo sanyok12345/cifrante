@@ -1,4 +1,4 @@
-import { toBinary, toBytes } from '../bytes.js'
+import { toBinary, toBinaryView, toBytes, toBytesView } from '../bytes.js'
 import { InvalidInputError } from '../errors.js'
 import { lazy } from '../lazy.js'
 import { createAesWasm } from '../wasm/aes.js'
@@ -17,6 +17,7 @@ export function ctr(key: Binary): Cipher {
     data: Uint8Array,
     initial: Uint8Array,
     decrypt: boolean,
+    useNative: boolean,
   ): Promise<Uint8Array> {
     let carry = Math.max(0, Math.ceil(data.length / 16) - 1)
 
@@ -28,12 +29,14 @@ export function ctr(key: Binary): Cipher {
       throw new InvalidInputError('AES-CTR counter would overflow')
     }
 
-    const result = await (decrypt
-      ? native.decrypt(initial, data)
-      : native.encrypt(initial, data))
+    if (useNative) {
+      const result = await (decrypt
+        ? native.decrypt(initial, data)
+        : native.encrypt(initial, data))
 
-    if (result !== undefined) {
-      return result
+      if (result !== undefined) {
+        return result
+      }
     }
 
     const wasm = prepare()
@@ -68,15 +71,17 @@ export function ctr(key: Binary): Cipher {
 
   return {
     async encrypt(data, options) {
-      const input = toBytes(data)
-      const initial = ivBytes(options, 16)
-      return transform(input, initial, false)
+      const useNative = native.available()
+      const input = useNative ? toBytes(data) : toBytesView(data)
+      const initial = ivBytes(options, 16, useNative)
+      return transform(input, initial, false, useNative)
     },
 
     async decrypt(data, options) {
-      const input = toBinary(data)
-      const initial = ivBytes(options, 16)
-      return transform(input, initial, true)
+      const useNative = native.available()
+      const input = useNative ? toBinary(data) : toBinaryView(data)
+      const initial = ivBytes(options, 16, useNative)
+      return transform(input, initial, true, useNative)
     },
   }
 }

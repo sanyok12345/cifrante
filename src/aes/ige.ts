@@ -1,4 +1,4 @@
-import { toBinary, toBytes } from '../bytes.js'
+import { toBinaryView, toBytesView } from '../bytes.js'
 import { InvalidInputError } from '../errors.js'
 import type { Binary } from '../types.js'
 import type { Cipher } from './aes.js'
@@ -62,14 +62,14 @@ export function ige(key: Binary): Cipher {
 
   return {
     async encrypt(data, options) {
-      const input = toBytes(data)
-      const initial = ivBytes(options, 32)
+      const input = toBytesView(data)
+      const initial = ivBytes(options, 32, false)
       return transform(input, initial, false)
     },
 
     async decrypt(data, options) {
-      const input = toBinary(data)
-      const initial = ivBytes(options, 32)
+      const input = toBinaryView(data)
+      const initial = ivBytes(options, 32, false)
       return transform(input, initial, true)
     },
   }

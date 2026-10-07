@@ -1,4 +1,4 @@
-import { toBinary, toBytes } from '../bytes.js'
+import { toBinary, toBinaryView, toBytes, toBytesView } from '../bytes.js'
 import { AuthenticationError, InvalidInputError, InvalidNonceError } from '../errors.js'
 import { lazy } from '../lazy.js'
 import { createAesWasm } from '../wasm/aes.js'
@@ -91,11 +91,11 @@ class GHash {
   }
 }
 
-function nonceBytes(nonce: Binary): Uint8Array<ArrayBuffer> {
-  let bytes: Uint8Array<ArrayBuffer>
+function nonceBytes(nonce: Binary): Uint8Array {
+  let bytes: Uint8Array
 
   try {
-    bytes = toBinary(nonce)
+    bytes = toBinaryView(nonce)
   } catch (error) {
     if (error instanceof InvalidInputError) {
       throw new InvalidNonceError('AES-GCM nonce must be binary data')
@@ -118,15 +118,15 @@ function checkLength(length: number): void {
 }
 
 function operationBytes(options: GcmOperationOptions): {
-  nonce: Uint8Array<ArrayBuffer>
-  aad: Uint8Array<ArrayBuffer>
+  nonce: Uint8Array
+  aad: Uint8Array
 } {
   if (!options || typeof options !== 'object' || Array.isArray(options)) {
     throw new InvalidInputError('AES-GCM operation requires nonce options')
   }
 
   const nonce = nonceBytes(options.nonce)
-  const aad = options.aad === undefined ? new Uint8Array(0) : toBytes(options.aad)
+  const aad = options.aad === undefined ? new Uint8Array(0) : toBytesView(options.aad)
   return { nonce, aad }
 }
 
@@ -228,14 +228,19 @@ export function gcm(
 
   return {
     async encrypt(data, options) {
-      const input = toBytes(data)
-      const { nonce, aad } = operationBytes(options)
+      const view = operationBytes(options)
+      const useNative = native.available(view.nonce)
+      const input = useNative ? toBytes(data) : toBytesView(data)
+      const nonce = useNative ? Uint8Array.from(view.nonce) : view.nonce
+      const aad = useNative ? Uint8Array.from(view.aad) : view.aad
       checkLength(input.length)
 
-      const result = await native.encrypt(nonce, input, aad, tagLength)
+      if (useNative) {
+        const result = await native.encrypt(nonce, input, aad, tagLength)
 
-      if (result !== undefined) {
-        return result
+        if (result !== undefined) {
+          return result
+        }
       }
 
       const wasm = prepareWasm()
@@ -254,9 +259,12 @@ export function gcm(
         throw new InvalidInputError('AES-GCM requires ciphertext and tag')
       }
 
-      const ciphertext = toBinary(data.ciphertext)
-      const tag = toBinary(data.tag)
-      const { nonce, aad } = operationBytes(options)
+      const view = operationBytes(options)
+      const useNative = native.available(view.nonce)
+      const ciphertext = useNative ? toBinary(data.ciphertext) : toBinaryView(data.ciphertext)
+      const tag = useNative ? toBinary(data.tag) : toBinaryView(data.tag)
+      const nonce = useNative ? Uint8Array.from(view.nonce) : view.nonce
+      const aad = useNative ? Uint8Array.from(view.aad) : view.aad
 
       if (tag.length !== tagLength) {
         throw new AuthenticationError('Invalid AES-GCM authentication tag')
@@ -264,10 +272,12 @@ export function gcm(
 
       checkLength(ciphertext.length)
 
-      const result = await native.decrypt(nonce, ciphertext, aad, tag)
+      if (useNative) {
+        const result = await native.decrypt(nonce, ciphertext, aad, tag)
 
-      if (result !== undefined) {
-        return result
+        if (result !== undefined) {
+          return result
+        }
       }
 
       const wasm = prepareWasm()
