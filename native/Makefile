@@ -70,7 +70,10 @@ sync:
 	cd .. && for target in $(TARGETS); do npm pkg set "optionalDependencies.@cifrante/$$target=$(VERSION)"; done
 
 publish: sync
-	for target in $(TARGETS); do npm publish --access public $(OUT_DIR)/$$target; done
+	for target in $(TARGETS); do \
+	  npm view @cifrante/$$target@$(VERSION) version >/dev/null 2>&1 \
+	    || npm publish --access public $(OUT_DIR)/$$target; \
+	done
 
 link: $(OUT_DIR)/$(HOST)/cifrante.node $(OUT_DIR)/$(HOST)/package.json
 	cd .. && npm install --no-save $(OUT_DIR:../%=%)/$(HOST)

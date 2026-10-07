@@ -50,7 +50,7 @@
   },
   "scripts": {
     "build": "make -C wasm && make -C native && tsdown",
-    "prepack": "npm run build"
+    "prepublishOnly": "npm run build && make -C native publish"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",
