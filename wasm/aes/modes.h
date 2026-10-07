@@ -8,8 +8,14 @@
 
 #include "aes.h"
 
+#if defined(AES_SIMD)
+typedef v128_t GhashKey[4];
+#else
+typedef uint64_t GhashKey[4];
+#endif
+
 typedef struct {
-  uint64_t h[2];
+  GhashKey key[9];
   uint64_t hash[2];
   uint64_t nonce_length;
   uint64_t aad_length;
@@ -28,6 +34,7 @@ typedef struct {
   Aes aes;
   uint8_t iv[32];
   uint8_t stream[16];
+  uint8_t scratch[64];
   uint32_t used;
   Gcm gcm;
 } State;
@@ -36,6 +43,7 @@ extern State state;
 extern uint8_t input[WASM_INPUT_CAPACITY];
 
 uint32_t aes_ready(uint32_t length, uint32_t alignment);
+void gcm_prepare(void);
 void aes_increment(uint8_t *counter, unsigned first);
 void aes_stream(
   uint8_t *counter,

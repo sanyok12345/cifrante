@@ -1,11 +1,14 @@
 import { AuthenticationError, CifranteError } from '../errors.js'
 import { wasm } from './module.js'
-import source from '../../build/wasm/aes.wasm'
+import portable from '../../build/wasm/aes.wasm'
+import simd from '../../build/wasm/aes.simd.wasm'
+import relaxed from '../../build/wasm/aes.relaxed.wasm'
 
 type AesExports = WebAssembly.Exports & {
   memory: WebAssembly.Memory
   state_ptr(): number
   state_size(): number
+  state_cipher_size(): number
   key_ptr(): number
   iv_ptr(): number
   tag_ptr(): number
@@ -28,7 +31,7 @@ type AesExports = WebAssembly.Exports & {
   gcm_decrypt(length: number): number
 }
 
-const load = /* @__PURE__ */ wasm<AesExports>(source)
+const load = /* @__PURE__ */ wasm<AesExports>(relaxed, simd, portable)
 
 function check(status: number): void {
   if (status === 4) {
@@ -49,6 +52,7 @@ export function createAesWasm(key: Uint8Array) {
 
   const stateOffset = engine.state_ptr()
   const stateSize = engine.state_size()
+  const cipherSize = engine.state_cipher_size()
   const keyOffset = engine.key_ptr()
   const ivOffset = engine.iv_ptr()
   const tagOffset = engine.tag_ptr()
@@ -56,12 +60,14 @@ export function createAesWasm(key: Uint8Array) {
   const inputCapacity = engine.input_capacity()
   const memory = new Uint8Array(engine.memory.buffer)
   let state: Uint8Array<ArrayBuffer>
+  let cipherState: Uint8Array<ArrayBuffer>
   let inputUsed = 0
 
   try {
     memory.set(key, keyOffset)
     check(engine.init(key.length))
     state = memory.slice(stateOffset, stateOffset + stateSize)
+    cipherState = state.subarray(0, cipherSize)
   } finally {
     memory.fill(0, keyOffset, keyOffset + 32)
     memory.fill(0, stateOffset, stateOffset + stateSize)
@@ -76,6 +82,12 @@ export function createAesWasm(key: Uint8Array) {
       memory.fill(0, inputOffset, inputOffset + inputUsed)
       inputUsed = 0
     }
+  }
+
+  const operations = {
+    ige: [engine.ige_encrypt, engine.ige_decrypt],
+    cbc: [engine.cbc_encrypt, engine.cbc_decrypt],
+    ctr: [engine.ctr_transform, engine.ctr_transform],
   }
 
   function write(data: Uint8Array): void {
@@ -94,6 +106,15 @@ export function createAesWasm(key: Uint8Array) {
       check(operation(chunk.length))
       output?.set(memory.subarray(inputOffset, inputOffset + chunk.length), offset)
     }
+  }
+
+  function updateSingle(
+    data: Uint8Array,
+    operation: (length: number) => number,
+  ): Uint8Array<ArrayBuffer> {
+    write(data)
+    check(operation(data.length))
+    return memory.slice(inputOffset, inputOffset + data.length)
   }
 
   const beginGcm = (nonce: Uint8Array, aad: Uint8Array): void => {
@@ -116,20 +137,28 @@ export function createAesWasm(key: Uint8Array) {
       iv: Uint8Array,
       decrypt: boolean,
     ): Uint8Array<ArrayBuffer> {
-      const output = new Uint8Array(data.length)
-      const operation = mode === 'ctr'
-        ? engine.ctr_transform
-        : engine[`${mode}_${decrypt ? 'decrypt' : 'encrypt'}`]
+      const operation = operations[mode][decrypt ? 1 : 0]
+      let output: Uint8Array<ArrayBuffer> | undefined
 
       try {
-        return run(() => {
-          memory.set(iv, ivOffset)
+        memory.set(cipherState, stateOffset)
+        memory.set(iv, ivOffset)
+
+        if (data.length <= inputCapacity) {
+          output = updateSingle(data, operation)
+        } else {
+          output = new Uint8Array(data.length)
           update(data, operation, output)
-          return output
-        })
+        }
+
+        return output
       } catch (error) {
-        output.fill(0)
+        output?.fill(0)
         throw error
+      } finally {
+        memory.fill(0, stateOffset, stateOffset + cipherSize)
+        memory.fill(0, inputOffset, inputOffset + inputUsed)
+        inputUsed = 0
       }
     },
 

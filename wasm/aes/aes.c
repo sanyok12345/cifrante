@@ -9,6 +9,12 @@ typedef struct {
   uint32_t x0, x1, x2, x3;
 } Nibble;
 
+typedef struct {
+  uint32_t p[8];
+} Planes;
+
+#define EACH(op) op(0) op(1) op(2) op(3) op(4) op(5) op(6) op(7)
+
 static inline Nibble multiply(Nibble a, Nibble b) {
   uint32_t l0 = a.x0 & b.x0;
   uint32_t l2 = a.x1 & b.x1;
@@ -50,9 +56,9 @@ static inline Nibble inverse(Nibble a) {
   };
 }
 
-static void invert_tower(uint32_t *p) {
-  Nibble a = {p[0], p[1], p[2], p[3]};
-  Nibble b = {p[4], p[5], p[6], p[7]};
+static inline void invert_tower(Planes *s) {
+  Nibble a = {s->p[0], s->p[1], s->p[2], s->p[3]};
+  Nibble b = {s->p[4], s->p[5], s->p[6], s->p[7]};
   Nibble product = multiply(a, b);
   Nibble norm = {
     product.x0 ^ a.x0 ^ a.x2 ^ b.x2,
@@ -65,165 +71,264 @@ static void invert_tower(uint32_t *p) {
   Nibble low = multiply(sum, reciprocal);
   Nibble high = multiply(b, reciprocal);
 
-  p[0] = low.x0;
-  p[1] = low.x1;
-  p[2] = low.x2;
-  p[3] = low.x3;
-  p[4] = high.x0;
-  p[5] = high.x1;
-  p[6] = high.x2;
-  p[7] = high.x3;
+  s->p[0] = low.x0;
+  s->p[1] = low.x1;
+  s->p[2] = low.x2;
+  s->p[3] = low.x3;
+  s->p[4] = high.x0;
+  s->p[5] = high.x1;
+  s->p[6] = high.x2;
+  s->p[7] = high.x3;
 }
 
-static void substitute(uint32_t *p) {
-  uint32_t x0 = p[0], x1 = p[1], x2 = p[2], x3 = p[3];
-  uint32_t x4 = p[4], x5 = p[5], x6 = p[6], x7 = p[7];
+static inline void substitute(Planes *s) {
+  uint32_t x0 = s->p[0], x1 = s->p[1], x2 = s->p[2], x3 = s->p[3];
+  uint32_t x4 = s->p[4], x5 = s->p[5], x6 = s->p[6], x7 = s->p[7];
 
-  p[0] = x0 ^ x5 ^ x7;
-  p[1] = x2;
-  p[2] = x2 ^ x3 ^ x4 ^ x5 ^ x6 ^ x7;
-  p[3] = x3 ^ x4;
-  p[4] = x4 ^ x5 ^ x6;
-  p[5] = x1 ^ x4 ^ x6 ^ x7;
-  p[6] = x2 ^ x3 ^ x5 ^ x7;
-  p[7] = x5 ^ x7;
-  invert_tower(p);
+  s->p[0] = x0 ^ x5 ^ x7;
+  s->p[1] = x2;
+  s->p[2] = x2 ^ x3 ^ x4 ^ x5 ^ x6 ^ x7;
+  s->p[3] = x3 ^ x4;
+  s->p[4] = x4 ^ x5 ^ x6;
+  s->p[5] = x1 ^ x4 ^ x6 ^ x7;
+  s->p[6] = x2 ^ x3 ^ x5 ^ x7;
+  s->p[7] = x5 ^ x7;
+  invert_tower(s);
 
-  x0 = p[0]; x1 = p[1]; x2 = p[2]; x3 = p[3];
-  x4 = p[4]; x5 = p[5]; x6 = p[6]; x7 = p[7];
+  x0 = s->p[0]; x1 = s->p[1]; x2 = s->p[2]; x3 = s->p[3];
+  x4 = s->p[4]; x5 = s->p[5]; x6 = s->p[6]; x7 = s->p[7];
 
-  p[0] = x0 ^ x2 ^ x6 ^ 0xffffu;
-  p[1] = x0 ^ x1 ^ x2 ^ x3 ^ x4 ^ x5 ^ 0xffffu;
-  p[2] = x0 ^ x3 ^ x5 ^ x6;
-  p[3] = x0 ^ x2 ^ x5;
-  p[4] = x0 ^ x1 ^ x3 ^ x4 ^ x5;
-  p[5] = x1 ^ x2 ^ x3 ^ x5 ^ x6 ^ x7 ^ 0xffffu;
-  p[6] = x4 ^ x6 ^ x7 ^ 0xffffu;
-  p[7] = x1 ^ x2;
+  s->p[0] = ~(x0 ^ x2 ^ x6);
+  s->p[1] = ~(x0 ^ x1 ^ x2 ^ x3 ^ x4 ^ x5);
+  s->p[2] = x0 ^ x3 ^ x5 ^ x6;
+  s->p[3] = x0 ^ x2 ^ x5;
+  s->p[4] = x0 ^ x1 ^ x3 ^ x4 ^ x5;
+  s->p[5] = ~(x1 ^ x2 ^ x3 ^ x5 ^ x6 ^ x7);
+  s->p[6] = ~(x4 ^ x6 ^ x7);
+  s->p[7] = x1 ^ x2;
 }
 
-static void inverse_substitute(uint32_t *p) {
-  uint32_t x0 = p[0], x1 = p[1], x2 = p[2], x3 = p[3];
-  uint32_t x4 = p[4], x5 = p[5], x6 = p[6], x7 = p[7];
+static inline void inverse_substitute(Planes *s) {
+  uint32_t x0 = s->p[0], x1 = s->p[1], x2 = s->p[2], x3 = s->p[3];
+  uint32_t x4 = s->p[4], x5 = s->p[5], x6 = s->p[6], x7 = s->p[7];
 
-  p[0] = x1 ^ x5 ^ x6 ^ 0xffffu;
-  p[1] = x1 ^ x4 ^ x7 ^ 0xffffu;
-  p[2] = x1 ^ x4 ^ 0xffffu;
-  p[3] = x0 ^ x1 ^ x2 ^ x3 ^ x5 ^ x6;
-  p[4] = x0 ^ x1 ^ x2 ^ x4 ^ x5 ^ x6 ^ x7;
-  p[5] = x3 ^ x4 ^ x5 ^ x6;
-  p[6] = x0 ^ x4 ^ x5 ^ x6 ^ 0xffffu;
-  p[7] = x1 ^ x2 ^ x6 ^ x7;
-  invert_tower(p);
+  s->p[0] = ~(x1 ^ x5 ^ x6);
+  s->p[1] = ~(x1 ^ x4 ^ x7);
+  s->p[2] = ~(x1 ^ x4);
+  s->p[3] = x0 ^ x1 ^ x2 ^ x3 ^ x5 ^ x6;
+  s->p[4] = x0 ^ x1 ^ x2 ^ x4 ^ x5 ^ x6 ^ x7;
+  s->p[5] = x3 ^ x4 ^ x5 ^ x6;
+  s->p[6] = ~(x0 ^ x4 ^ x5 ^ x6);
+  s->p[7] = x1 ^ x2 ^ x6 ^ x7;
+  invert_tower(s);
 
-  x0 = p[0]; x1 = p[1]; x2 = p[2]; x3 = p[3];
-  x4 = p[4]; x5 = p[5]; x6 = p[6]; x7 = p[7];
+  x0 = s->p[0]; x1 = s->p[1]; x2 = s->p[2]; x3 = s->p[3];
+  x4 = s->p[4]; x5 = s->p[5]; x6 = s->p[6]; x7 = s->p[7];
 
-  p[0] = x0 ^ x7;
-  p[1] = x4 ^ x5 ^ x7;
-  p[2] = x1;
-  p[3] = x1 ^ x6 ^ x7;
-  p[4] = x1 ^ x3 ^ x6 ^ x7;
-  p[5] = x2 ^ x4 ^ x6;
-  p[6] = x1 ^ x2 ^ x3 ^ x7;
-  p[7] = x2 ^ x4 ^ x6 ^ x7;
+  s->p[0] = x0 ^ x7;
+  s->p[1] = x4 ^ x5 ^ x7;
+  s->p[2] = x1;
+  s->p[3] = x1 ^ x6 ^ x7;
+  s->p[4] = x1 ^ x3 ^ x6 ^ x7;
+  s->p[5] = x2 ^ x4 ^ x6;
+  s->p[6] = x1 ^ x2 ^ x3 ^ x7;
+  s->p[7] = x2 ^ x4 ^ x6 ^ x7;
 }
 
-static void pack(uint32_t *planes, const uint8_t *bytes, unsigned count) {
-  for (unsigned bit = 0; bit < 8; bit++) {
-    uint32_t plane = 0;
+static inline uint32_t rotr(uint32_t x, unsigned n) {
+  return (x >> n) | (x << (32u - n));
+}
 
-    for (unsigned lane = 0; lane < count; lane++) {
-      plane |= ((uint32_t)(bytes[lane] >> bit) & 1u) << lane;
+static inline uint32_t rotl(uint32_t x, unsigned n) {
+  return (x << n) | (x >> (32u - n));
+}
+
+static inline void shift_rows(Planes *s) {
+#define SHIFT(i) \
+  s->p[i] = (s->p[i] & 0x03030303u) | rotr(s->p[i] & 0x0c0c0c0cu, 8) \
+    | rotr(s->p[i] & 0x30303030u, 16) | rotr(s->p[i] & 0xc0c0c0c0u, 24);
+  EACH(SHIFT)
+#undef SHIFT
+}
+
+static inline void inverse_shift_rows(Planes *s) {
+#define SHIFT(i) \
+  s->p[i] = (s->p[i] & 0x03030303u) | rotl(s->p[i] & 0x0c0c0c0cu, 8) \
+    | rotl(s->p[i] & 0x30303030u, 16) | rotl(s->p[i] & 0xc0c0c0c0u, 24);
+  EACH(SHIFT)
+#undef SHIFT
+}
+
+static inline uint32_t rows1(uint32_t x) {
+  return ((x >> 2) & 0x3f3f3f3fu) | ((x << 6) & 0xc0c0c0c0u);
+}
+
+static inline uint32_t rows2(uint32_t x) {
+  return ((x >> 4) & 0x0f0f0f0fu) | ((x << 4) & 0xf0f0f0f0u);
+}
+
+static inline void twice(Planes *s) {
+  uint32_t top = s->p[7];
+
+  s->p[7] = s->p[6];
+  s->p[6] = s->p[5];
+  s->p[5] = s->p[4];
+  s->p[4] = s->p[3] ^ top;
+  s->p[3] = s->p[2] ^ top;
+  s->p[2] = s->p[1];
+  s->p[1] = s->p[0] ^ top;
+  s->p[0] = top;
+}
+
+static inline void mix_columns(Planes *s) {
+  Planes sum;
+  Planes next;
+
+#define PREPARE(i) next.p[i] = rows1(s->p[i]); sum.p[i] = s->p[i] ^ next.p[i];
+  EACH(PREPARE)
+#undef PREPARE
+
+  Planes doubled = sum;
+
+  twice(&doubled);
+
+#define COMBINE(i) s->p[i] = doubled.p[i] ^ next.p[i] ^ rows2(sum.p[i]);
+  EACH(COMBINE)
+#undef COMBINE
+}
+
+static inline void inverse_mix_columns(Planes *s) {
+  Planes difference;
+
+#define DIFFERENCE(i) difference.p[i] = s->p[i] ^ rows2(s->p[i]);
+  EACH(DIFFERENCE)
+#undef DIFFERENCE
+
+  twice(&difference);
+  twice(&difference);
+
+#define APPLY(i) s->p[i] ^= difference.p[i];
+  EACH(APPLY)
+#undef APPLY
+
+  mix_columns(s);
+}
+
+static inline void add_key(Planes *s, const uint32_t *key) {
+#define ADD(i) s->p[i] ^= key[i];
+  EACH(ADD)
+#undef ADD
+}
+
+static inline uint64_t spread(uint32_t x) {
+  uint64_t v = x;
+
+  v = (v | (v << 16)) & 0x0000ffff0000ffffull;
+  v = (v | (v << 8)) & 0x00ff00ff00ff00ffull;
+  return v;
+}
+
+static inline uint32_t gather(uint64_t v) {
+  v &= 0x00ff00ff00ff00ffull;
+  v = (v | (v >> 8)) & 0x0000ffff0000ffffull;
+  v = (v | (v >> 16)) & 0x00000000ffffffffull;
+  return (uint32_t)v;
+}
+
+static inline uint64_t transpose8(uint64_t x) {
+  uint64_t t;
+
+  t = (x ^ (x >> 7)) & 0x00aa00aa00aa00aaull;
+  x ^= t ^ (t << 7);
+  t = (x ^ (x >> 14)) & 0x0000cccc0000ccccull;
+  x ^= t ^ (t << 14);
+  t = (x ^ (x >> 28)) & 0x00000000f0f0f0f0ull;
+  x ^= t ^ (t << 28);
+  return x;
+}
+
+static inline void swap_bytes(uint64_t *a, uint64_t *b, unsigned shift, uint64_t mask) {
+  uint64_t t = ((*a >> shift) ^ *b) & mask;
+
+  *b ^= t;
+  *a ^= t << shift;
+}
+
+static void pack(Planes *s, const uint8_t *first, const uint8_t *second) {
+  uint64_t m[4];
+
+  for (unsigned q = 0; q < 4; q++) {
+    m[q] = spread(*(const wasm_u32 *)(first + q * 4))
+      | (spread(*(const wasm_u32 *)(second + q * 4)) << 8);
+    m[q] = transpose8(m[q]);
+  }
+
+  swap_bytes(&m[0], &m[1], 8, 0x00ff00ff00ff00ffull);
+  swap_bytes(&m[2], &m[3], 8, 0x00ff00ff00ff00ffull);
+  swap_bytes(&m[0], &m[2], 16, 0x0000ffff0000ffffull);
+  swap_bytes(&m[1], &m[3], 16, 0x0000ffff0000ffffull);
+
+  s->p[0] = (uint32_t)m[0];
+  s->p[4] = (uint32_t)(m[0] >> 32);
+  s->p[1] = (uint32_t)m[1];
+  s->p[5] = (uint32_t)(m[1] >> 32);
+  s->p[2] = (uint32_t)m[2];
+  s->p[6] = (uint32_t)(m[2] >> 32);
+  s->p[3] = (uint32_t)m[3];
+  s->p[7] = (uint32_t)(m[3] >> 32);
+}
+
+static void unpack(const Planes *s, uint8_t *first, uint8_t *second) {
+  uint64_t m[4];
+
+  m[0] = s->p[0] | ((uint64_t)s->p[4] << 32);
+  m[1] = s->p[1] | ((uint64_t)s->p[5] << 32);
+  m[2] = s->p[2] | ((uint64_t)s->p[6] << 32);
+  m[3] = s->p[3] | ((uint64_t)s->p[7] << 32);
+
+  swap_bytes(&m[0], &m[2], 16, 0x0000ffff0000ffffull);
+  swap_bytes(&m[1], &m[3], 16, 0x0000ffff0000ffffull);
+  swap_bytes(&m[0], &m[1], 8, 0x00ff00ff00ff00ffull);
+  swap_bytes(&m[2], &m[3], 8, 0x00ff00ff00ff00ffull);
+
+  for (unsigned q = 0; q < 4; q++) {
+    m[q] = transpose8(m[q]);
+    *(wasm_u32 *)(first + q * 4) = gather(m[q]);
+
+    if (second) {
+      *(wasm_u32 *)(second + q * 4) = gather(m[q] >> 8);
     }
-
-    planes[bit] = plane;
   }
 }
 
-static void unpack(uint8_t *bytes, const uint32_t *planes, unsigned count) {
-  for (unsigned lane = 0; lane < count; lane++) {
-    uint32_t byte = 0;
+static void encrypt_planes(const Aes *aes, Planes *s) {
+  add_key(s, aes->keys[0]);
 
-    for (unsigned bit = 0; bit < 8; bit++) {
-      byte |= ((planes[bit] >> lane) & 1u) << bit;
-    }
-
-    bytes[lane] = (uint8_t)byte;
+  for (uint32_t round = 1; round < aes->rounds; round++) {
+    substitute(s);
+    shift_rows(s);
+    mix_columns(s);
+    add_key(s, aes->keys[round]);
   }
+
+  substitute(s);
+  shift_rows(s);
+  add_key(s, aes->keys[aes->rounds]);
 }
 
-static uint32_t rotate_rows(uint32_t plane, unsigned count) {
-  uint32_t lower = 0x1111u * ((1u << (4u - count)) - 1u);
-  uint32_t upper = 0xffffu ^ lower;
+static void decrypt_planes(const Aes *aes, Planes *s) {
+  add_key(s, aes->keys[aes->rounds]);
 
-  return ((plane >> count) & lower) | ((plane << (4u - count)) & upper);
-}
-
-static void shift_rows(uint32_t *p, int inverse) {
-  unsigned first = inverse ? 12 : 4;
-  unsigned third = inverse ? 4 : 12;
-
-  for (unsigned bit = 0; bit < 8; bit++) {
-    uint32_t x = p[bit];
-
-    p[bit] = (x & 0x1111u)
-      | (((x >> first) | (x << (16u - first))) & 0x2222u)
-      | (((x >> 8) | (x << 8)) & 0x4444u)
-      | (((x >> third) | (x << (16u - third))) & 0x8888u);
-  }
-}
-
-static void twice(uint32_t *p) {
-  uint32_t top = p[7];
-
-  p[7] = p[6];
-  p[6] = p[5];
-  p[5] = p[4];
-  p[4] = p[3] ^ top;
-  p[3] = p[2] ^ top;
-  p[2] = p[1];
-  p[1] = p[0] ^ top;
-  p[0] = top;
-}
-
-static void mix_columns(uint32_t *p, int inverse) {
-  uint32_t difference[8];
-
-  if (inverse) {
-    for (unsigned bit = 0; bit < 8; bit++) {
-      difference[bit] = p[bit] ^ rotate_rows(p[bit], 2);
-    }
-
-    twice(difference);
-    twice(difference);
-
-    for (unsigned bit = 0; bit < 8; bit++) {
-      p[bit] ^= difference[bit];
-    }
+  for (uint32_t round = aes->rounds - 1; round > 0; round--) {
+    inverse_shift_rows(s);
+    inverse_substitute(s);
+    add_key(s, aes->keys[round]);
+    inverse_mix_columns(s);
   }
 
-  for (unsigned bit = 0; bit < 8; bit++) {
-    uint32_t x = p[bit];
-    uint32_t next = rotate_rows(x, 1);
-
-    difference[bit] = x ^ next;
-    p[bit] = next ^ rotate_rows(x, 2) ^ rotate_rows(x, 3);
-  }
-
-  twice(difference);
-
-  for (unsigned bit = 0; bit < 8; bit++) {
-    p[bit] ^= difference[bit];
-  }
-
-  wasm_clear(difference, sizeof(difference));
-}
-
-static void add_key(uint32_t *p, const uint32_t *key) {
-  for (unsigned bit = 0; bit < 8; bit++) {
-    p[bit] ^= key[bit];
-  }
+  inverse_shift_rows(s);
+  inverse_substitute(s);
+  add_key(s, aes->keys[0]);
 }
 
 uint32_t aes_init(Aes *aes, const uint8_t *key, size_t key_length) {
@@ -234,14 +339,18 @@ uint32_t aes_init(Aes *aes, const uint8_t *key, size_t key_length) {
   }
 
   uint8_t expanded[240];
-  uint8_t word[4];
-  uint32_t planes[8];
+  uint8_t word[16];
+  Planes planes;
   uint32_t round_constant = 1;
 
   aes->rounds = (uint32_t)(key_length / 4) + 6;
 
   for (size_t i = 0; i < key_length; i++) {
     expanded[i] = key[i];
+  }
+
+  for (unsigned i = 4; i < 16; i++) {
+    word[i] = 0;
   }
 
   for (size_t offset = key_length; offset < (aes->rounds + 1) * 16; offset += 4) {
@@ -259,9 +368,9 @@ uint32_t aes_init(Aes *aes, const uint8_t *key, size_t key_length) {
     }
 
     if (offset % key_length == 0 || (key_length == 32 && offset % key_length == 16)) {
-      pack(planes, word, 4);
-      substitute(planes);
-      unpack(word, planes, 4);
+      pack(&planes, word, word);
+      substitute(&planes);
+      unpack(&planes, word, 0);
     }
 
     if (offset % key_length == 0) {
@@ -275,51 +384,69 @@ uint32_t aes_init(Aes *aes, const uint8_t *key, size_t key_length) {
   }
 
   for (uint32_t round = 0; round <= aes->rounds; round++) {
-    pack(aes->keys[round], expanded + round * 16, 16);
+    pack(&planes, expanded + round * 16, expanded + round * 16);
+
+    for (unsigned i = 0; i < 8; i++) {
+      aes->keys[round][i] = planes.p[i];
+    }
   }
 
   wasm_clear(expanded, sizeof(expanded));
   wasm_clear(word, sizeof(word));
-  wasm_clear(planes, sizeof(planes));
+  wasm_clear(&planes, sizeof(planes));
   return 0;
 }
 
 void aes_encrypt(const Aes *aes, uint8_t *block) {
-  uint32_t planes[8];
+  Planes planes;
 
-  pack(planes, block, 16);
-  add_key(planes, aes->keys[0]);
-
-  for (uint32_t round = 1; round < aes->rounds; round++) {
-    substitute(planes);
-    shift_rows(planes, 0);
-    mix_columns(planes, 0);
-    add_key(planes, aes->keys[round]);
-  }
-
-  substitute(planes);
-  shift_rows(planes, 0);
-  add_key(planes, aes->keys[aes->rounds]);
-  unpack(block, planes, 16);
-  wasm_clear(planes, sizeof(planes));
+  pack(&planes, block, block);
+  encrypt_planes(aes, &planes);
+  unpack(&planes, block, 0);
+  wasm_clear(&planes, sizeof(planes));
 }
 
 void aes_decrypt(const Aes *aes, uint8_t *block) {
-  uint32_t planes[8];
+  Planes planes;
 
-  pack(planes, block, 16);
-  add_key(planes, aes->keys[aes->rounds]);
+  pack(&planes, block, block);
+  decrypt_planes(aes, &planes);
+  unpack(&planes, block, 0);
+  wasm_clear(&planes, sizeof(planes));
+}
 
-  for (uint32_t round = aes->rounds - 1; round > 0; round--) {
-    shift_rows(planes, 1);
-    inverse_substitute(planes);
-    add_key(planes, aes->keys[round]);
-    mix_columns(planes, 1);
+void aes_encrypt_blocks(const Aes *aes, uint8_t *blocks, size_t count) {
+  Planes planes;
+
+  for (; count >= 2; count -= 2, blocks += 32) {
+    pack(&planes, blocks, blocks + 16);
+    encrypt_planes(aes, &planes);
+    unpack(&planes, blocks, blocks + 16);
   }
 
-  shift_rows(planes, 1);
-  inverse_substitute(planes);
-  add_key(planes, aes->keys[0]);
-  unpack(block, planes, 16);
-  wasm_clear(planes, sizeof(planes));
+  if (count) {
+    pack(&planes, blocks, blocks);
+    encrypt_planes(aes, &planes);
+    unpack(&planes, blocks, 0);
+  }
+
+  wasm_clear(&planes, sizeof(planes));
+}
+
+void aes_decrypt_blocks(const Aes *aes, uint8_t *blocks, size_t count) {
+  Planes planes;
+
+  for (; count >= 2; count -= 2, blocks += 32) {
+    pack(&planes, blocks, blocks + 16);
+    decrypt_planes(aes, &planes);
+    unpack(&planes, blocks, blocks + 16);
+  }
+
+  if (count) {
+    pack(&planes, blocks, blocks);
+    decrypt_planes(aes, &planes);
+    unpack(&planes, blocks, 0);
+  }
+
+  wasm_clear(&planes, sizeof(planes));
 }

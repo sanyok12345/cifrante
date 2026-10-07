@@ -15,6 +15,9 @@ uint8_t *state_ptr(void) { return (uint8_t *)&state; }
 WASM_EXPORT("state_size")
 uint32_t state_size(void) { return sizeof(state); }
 
+WASM_EXPORT("state_cipher_size")
+uint32_t state_cipher_size(void) { return offsetof(State, gcm); }
+
 WASM_EXPORT("key_ptr")
 uint8_t *key_ptr(void) { return key; }
 
@@ -36,6 +39,11 @@ uint32_t init(uint32_t key_length) {
   uint32_t status = aes_init(&state.aes, key, key_length);
   state.used = 16;
   wasm_clear(key, sizeof(key));
+
+  if (status == 0) {
+    gcm_prepare();
+  }
+
   return status;
 }
 
@@ -68,7 +76,27 @@ void aes_stream(
   uint32_t length,
   unsigned first
 ) {
-  for (uint32_t offset = 0; offset < length;) {
+  uint32_t offset = 0;
+
+  while (*used == 16 && length - offset >= sizeof(state.scratch)) {
+    for (unsigned block = 0; block < sizeof(state.scratch) / 16; block++) {
+      for (unsigned i = 0; i < 16; i++) {
+        state.scratch[block * 16 + i] = counter[i];
+      }
+
+      aes_increment(counter, first);
+    }
+
+    aes_encrypt_blocks(&state.aes, state.scratch, sizeof(state.scratch) / 16);
+
+    for (unsigned i = 0; i < sizeof(state.scratch); i += 8) {
+      *(wasm_u64 *)(input + offset + i) ^= *(const wasm_u64 *)(state.scratch + i);
+    }
+
+    offset += sizeof(state.scratch);
+  }
+
+  while (offset < length) {
     if (*used == 16) {
       for (unsigned i = 0; i < 16; i++) {
         stream[i] = counter[i];
@@ -92,4 +120,6 @@ void aes_stream(
     *used += count;
     offset += count;
   }
+
+  wasm_clear(state.scratch, sizeof(state.scratch));
 }
