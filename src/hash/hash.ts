@@ -1,6 +1,7 @@
-import { encodeBase64, encodeHex, toBytes } from '../bytes.js'
+import { encodeBase64, encodeHex, toBytesView } from '../bytes.js'
 import { InvalidInputError } from '../errors.js'
-import { nativeDigest, nativeHash } from '../native/web.js'
+import { nativeDigest, nativeDigestAvailable, nativeHash } from '../native/web.js'
+import type { WasmHashFactory } from '../wasm/hash.js'
 import type { Data } from '../types.js'
 
 export interface Hash {
@@ -48,7 +49,7 @@ export class SyncDigest implements SyncHashState {
     }
 
     try {
-      this.engine.update(toBytes(data))
+      this.engine.update(toBytesView(data))
     } catch (error) {
       this.engine = undefined
       this.failed = true
@@ -73,14 +74,14 @@ export class SyncDigest implements SyncHashState {
     this.engine = undefined
 
     try {
-      this.result = Uint8Array.from(engine.digest())
+      this.result = engine.digest()
     } catch (error) {
       this.failed = true
       this.error = error
       throw error
     }
 
-    return Uint8Array.from(this.result)
+    return this.result.slice()
   }
 }
 
@@ -111,13 +112,25 @@ class State extends AsyncDigest implements HashState {
 export function createSyncHash(
   name: string,
   createJS: () => DigestState,
-  createWasm?: () => DigestState | undefined,
+  createWasm?: WasmHashFactory,
 ): SyncHash {
   const create = (): SyncHashState => new SyncDigest(
     nativeHash(name) ?? createWasm?.() ?? createJS(),
     'Hash',
   )
-  const hash = (data: Data): Uint8Array => create().update(data).digest()
+  const hash = (data: Data): Uint8Array => {
+    const bytes = toBytesView(data)
+
+    if (createWasm && nativeHash(name) === undefined) {
+      const output = createWasm.once(bytes)
+
+      if (output) {
+        return output
+      }
+    }
+
+    return create().update(bytes).digest()
+  }
 
   return Object.assign(hash, { create })
 }
@@ -125,10 +138,16 @@ export function createSyncHash(
 export function createHash(name: string, sync: SyncHash): Hash {
   const create = (): HashState => new State(sync.create())
   const hash = async (data: Data): Promise<Uint8Array> => {
-    const input = toBytes(data)
-    const native = await nativeDigest(name, input)
+    const input = toBytesView(data)
 
-    return native === undefined ? sync(input) : Uint8Array.from(native)
+    if (!nativeDigestAvailable(name)) {
+      return sync(input)
+    }
+
+    const copy = typeof data === 'string' ? input : Uint8Array.from(input)
+    const native = await nativeDigest(name, copy)
+
+    return native === undefined ? sync(copy) : native
   }
 
   return Object.assign(hash, {

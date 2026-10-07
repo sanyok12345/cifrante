@@ -1,9 +1,9 @@
-import { encodeHex, equalBinary, toBinary, toBytes } from './bytes.js'
+import { encodeHex, equalBinary, toBinary, toBytes, toBytesView } from './bytes.js'
 import { AsyncDigest, SyncDigest } from './hash/hash.js'
 import type { DigestState, SyncHash, SyncHashState } from './hash/hash.js'
 import { sha256Sync } from './hash/sha256.js'
 import { sha512Sync } from './hash/sha512.js'
-import { nativeHmac, nativeMac } from './native/web.js'
+import { nativeHmac, nativeMac, nativeMacAvailable } from './native/web.js'
 import type { Binary, Data } from './types.js'
 
 export interface Hmac {
@@ -102,10 +102,14 @@ function createHmac(name: string, sync: SyncHmac): Hmac {
     const value = toBinary(key)
 
     try {
+      if (!nativeMacAvailable(name, value)) {
+        return sync(value, toBytesView(data))
+      }
+
       const input = toBytes(data)
       const native = await nativeMac(name, value, input)
 
-      return native === undefined ? sync(value, input) : Uint8Array.from(native)
+      return native === undefined ? sync(value, input) : native
     } finally {
       value.fill(0)
     }

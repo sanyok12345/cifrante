@@ -19,6 +19,9 @@ type Context = {
   engine: HashExports
   name: string
   outputLength: number
+  memory: Uint8Array
+  stateView: Uint8Array
+  outputView: Uint8Array
   stateOffset: number
   stateSize: number
   inputOffset: number
@@ -40,21 +43,15 @@ class WasmHash implements DigestState {
   private readonly state: Uint8Array
 
   constructor(private readonly context: Context) {
-    const { engine, stateOffset, stateSize } = context
+    const { engine, stateView } = context
     engine.init()
-
-    const memory = this.memory()
-    this.state = memory.slice(stateOffset, stateOffset + stateSize)
-    memory.fill(0, stateOffset, stateOffset + stateSize)
-  }
-
-  private memory(): Uint8Array {
-    return new Uint8Array(this.context.engine.memory.buffer)
+    this.state = stateView.slice()
+    stateView.fill(0)
   }
 
   private use<T>(operation: () => T, inputLength = 0): T {
-    const { stateOffset, stateSize, inputOffset, outputOffset, outputLength } = this.context
-    this.memory().set(this.state, stateOffset)
+    const { memory, stateView, outputView, stateOffset, inputOffset } = this.context
+    memory.set(this.state, stateOffset)
 
     try {
       return operation()
@@ -62,33 +59,32 @@ class WasmHash implements DigestState {
       this.state.fill(0)
       throw error
     } finally {
-      const memory = this.memory()
-      memory.fill(0, stateOffset, stateOffset + stateSize)
+      stateView.fill(0)
       memory.fill(0, inputOffset, inputOffset + inputLength)
-      memory.fill(0, outputOffset, outputOffset + outputLength)
+      outputView.fill(0)
     }
   }
 
   update(data: Uint8Array): void {
-    const { engine, name, stateOffset, stateSize, inputOffset, inputCapacity } = this.context
+    const { engine, name, memory, stateView, inputOffset, inputCapacity } = this.context
 
     this.use(() => {
       for (let offset = 0; offset < data.length; offset += inputCapacity) {
         const chunk = data.subarray(offset, offset + inputCapacity)
-        this.memory().set(chunk, inputOffset)
+        memory.set(chunk, inputOffset)
         check(engine.update(chunk.length), name)
       }
 
-      this.state.set(this.memory().subarray(stateOffset, stateOffset + stateSize))
+      this.state.set(stateView)
     }, Math.min(data.length, inputCapacity))
   }
 
   digest(): Uint8Array {
     try {
       return this.use(() => {
-        const { engine, name, outputOffset, outputLength } = this.context
+        const { engine, name, outputView } = this.context
         check(engine.finalize(), name)
-        return this.memory().slice(outputOffset, outputOffset + outputLength)
+        return outputView.slice()
       })
     } finally {
       this.state.fill(0)
@@ -96,11 +92,15 @@ class WasmHash implements DigestState {
   }
 }
 
+export type WasmHashFactory = (() => DigestState | undefined) & {
+  once(data: Uint8Array): Uint8Array | undefined
+}
+
 export function wasmHash(
   source: string,
   name: string,
   outputLength: number,
-): () => DigestState | undefined {
+): WasmHashFactory {
   const load = wasm<HashExports>(source)
   const prepare = lazy((): Context | undefined => {
     const engine = load()
@@ -109,20 +109,54 @@ export function wasmHash(
       return undefined
     }
 
+    const memory = new Uint8Array(engine.memory.buffer)
+    const stateOffset = engine.state_ptr()
+    const stateSize = engine.state_size()
+    const outputOffset = engine.output_ptr()
+
     return {
       engine,
       name,
       outputLength,
-      stateOffset: engine.state_ptr(),
-      stateSize: engine.state_size(),
+      memory,
+      stateView: memory.subarray(stateOffset, stateOffset + stateSize),
+      outputView: memory.subarray(outputOffset, outputOffset + outputLength),
+      stateOffset,
+      stateSize,
       inputOffset: engine.input_ptr(),
       inputCapacity: engine.input_capacity(),
-      outputOffset: engine.output_ptr(),
+      outputOffset,
     }
   })
 
-  return () => {
+  const once = (data: Uint8Array): Uint8Array | undefined => {
+    const context = prepare()
+
+    if (!context) {
+      return undefined
+    }
+
+    const { engine, memory, stateView, outputView, inputOffset, inputCapacity } = context
+    engine.init()
+
+    try {
+      for (let offset = 0; offset < data.length; offset += inputCapacity) {
+        const chunk = data.subarray(offset, offset + inputCapacity)
+        memory.set(chunk, inputOffset)
+        check(engine.update(chunk.length), name)
+      }
+
+      check(engine.finalize(), name)
+      return outputView.slice()
+    } finally {
+      stateView.fill(0)
+      memory.fill(0, inputOffset, inputOffset + Math.min(data.length, inputCapacity))
+      outputView.fill(0)
+    }
+  }
+
+  return Object.assign(() => {
     const context = prepare()
     return context ? new WasmHash(context) : undefined
-  }
+  }, { once })
 }
