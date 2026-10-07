@@ -12,6 +12,8 @@ export interface NativeCipher {
   available(): boolean
   encrypt(iv: Uint8Array, data: Uint8Array): Promise<Uint8Array | undefined>
   decrypt(iv: Uint8Array, data: Uint8Array): Promise<Uint8Array | undefined>
+  encryptSync?(iv: Uint8Array, data: Uint8Array): Uint8Array | undefined
+  decryptSync?(iv: Uint8Array, data: Uint8Array): Uint8Array | undefined
 }
 
 export interface NativeAead {
@@ -28,6 +30,18 @@ export interface NativeAead {
     aad: Uint8Array,
     tag: Uint8Array,
   ): Promise<Uint8Array | undefined>
+  encryptSync?(
+    nonce: Uint8Array,
+    data: Uint8Array,
+    aad: Uint8Array,
+    tagLength: number,
+  ): NativeSealed | undefined
+  decryptSync?(
+    nonce: Uint8Array,
+    data: Uint8Array,
+    aad: Uint8Array,
+    tag: Uint8Array,
+  ): Uint8Array | undefined
 }
 
 export interface NativeRsaKey {

@@ -31,6 +31,7 @@ import type {
   NativeHash,
   NativeOaep,
   NativeRsaKey,
+  NativeSealed,
 } from './types.js'
 
 export type {
@@ -209,11 +210,11 @@ export function nativeCipher(
   const name = `aes-${key.length * 8}-${mode}`
   const prepare = lazy(() => supportsCipher(name) ? createSecretKey(key) : undefined)
 
-  async function operate(
+  function operate(
     iv: Uint8Array,
     data: Uint8Array,
     decrypt: boolean,
-  ): Promise<Uint8Array | undefined> {
+  ): Uint8Array | undefined {
     const secret = prepare()
 
     if (secret === undefined) {
@@ -239,8 +240,10 @@ export function nativeCipher(
 
   return {
     available: () => supportsCipher(name),
-    encrypt: (iv, data) => operate(iv, data, false),
-    decrypt: (iv, data) => operate(iv, data, true),
+    encrypt: async (iv, data) => operate(iv, data, false),
+    decrypt: async (iv, data) => operate(iv, data, true),
+    encryptSync: (iv, data) => operate(iv, data, false),
+    decryptSync: (iv, data) => operate(iv, data, true),
   }
 }
 
@@ -248,47 +251,61 @@ export function nativeGcm(key: Uint8Array): NativeAead {
   const name = `aes-${key.length * 8}-gcm` as 'aes-128-gcm'
   const prepare = lazy(() => supportsCipher(name) ? createSecretKey(key) : undefined)
 
+  function seal(
+    nonce: Uint8Array,
+    data: Uint8Array,
+    aad: Uint8Array,
+    tagLength: number,
+  ): NativeSealed | undefined {
+    const secret = prepare()
+
+    if (secret === undefined || nonce.length > 128) {
+      return undefined
+    }
+
+    const cipher = createCipheriv(name, secret, nonce, { authTagLength: tagLength })
+    cipher.setAAD(aad)
+
+    const output = cipher.update(data)
+
+    return {
+      ciphertext: concat(output, cipher.final()),
+      tag: new Uint8Array(cipher.getAuthTag()),
+    }
+  }
+
+  function open(
+    nonce: Uint8Array,
+    data: Uint8Array,
+    aad: Uint8Array,
+    tag: Uint8Array,
+  ): Uint8Array | undefined {
+    const secret = prepare()
+
+    if (secret === undefined || nonce.length > 128) {
+      return undefined
+    }
+
+    const cipher = createDecipheriv(name, secret, nonce, { authTagLength: tag.length })
+    cipher.setAAD(aad)
+    cipher.setAuthTag(tag)
+
+    const output = cipher.update(data)
+
+    try {
+      return concat(output, cipher.final())
+    } catch {
+      output.fill(0)
+      throw new AuthenticationError('GCM authentication failed')
+    }
+  }
+
   return {
     available: (nonce) => supportsCipher(name) && nonce.length <= 128,
-
-    async encrypt(nonce, data, aad, tagLength) {
-      const secret = prepare()
-
-      if (secret === undefined || nonce.length > 128) {
-        return undefined
-      }
-
-      const cipher = createCipheriv(name, secret, nonce, { authTagLength: tagLength })
-      cipher.setAAD(aad)
-
-      const output = cipher.update(data)
-
-      return {
-        ciphertext: concat(output, cipher.final()),
-        tag: new Uint8Array(cipher.getAuthTag()),
-      }
-    },
-
-    async decrypt(nonce, data, aad, tag) {
-      const secret = prepare()
-
-      if (secret === undefined || nonce.length > 128) {
-        return undefined
-      }
-
-      const cipher = createDecipheriv(name, secret, nonce, { authTagLength: tag.length })
-      cipher.setAAD(aad)
-      cipher.setAuthTag(tag)
-
-      const output = cipher.update(data)
-
-      try {
-        return concat(output, cipher.final())
-      } catch {
-        output.fill(0)
-        throw new AuthenticationError('GCM authentication failed')
-      }
-    },
+    encrypt: async (nonce, data, aad, tagLength) => seal(nonce, data, aad, tagLength),
+    decrypt: async (nonce, data, aad, tag) => open(nonce, data, aad, tag),
+    encryptSync: seal,
+    decryptSync: open,
   }
 }
 
