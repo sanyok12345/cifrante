@@ -69,7 +69,7 @@ $(OUT_DIR)/%/package.json: ../package.json Makefile
 sync:
 	cd .. && for target in $(TARGETS); do npm pkg set "optionalDependencies.@cifrante/$$target=$(VERSION)"; done
 
-publish: all sync
+publish: sync
 	for target in $(TARGETS); do npm publish --access public $(OUT_DIR)/$$target; done
 
 link: $(OUT_DIR)/$(HOST)/cifrante.node $(OUT_DIR)/$(HOST)/package.json
