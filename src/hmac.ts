@@ -12,6 +12,7 @@ export interface Hmac {
   verify(key: Binary, data: Data, mac: Binary): Promise<boolean>
   hex(key: Binary, data: Data): Promise<string>
   create(key: Binary): HmacState
+  sync: SyncHmac
 }
 
 export interface HmacState {
@@ -144,6 +145,7 @@ function createHmac(name: string, sync: SyncHmac): Hmac {
     },
     hex: async (key: Binary, data: Data): Promise<string> => encodeHex(await mac(key, data)),
     create,
+    sync,
   })
 }
 

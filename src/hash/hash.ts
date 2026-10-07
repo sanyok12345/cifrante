@@ -10,6 +10,7 @@ export interface Hash {
   hex(data: Data): Promise<string>
   base64(data: Data): Promise<string>
   create(): HashState
+  sync: SyncHash
 }
 
 export interface HashState {
@@ -169,6 +170,7 @@ export function createHash(name: string, sync: SyncHash): Hash {
     hex: async (data: Data): Promise<string> => encodeHex(await hash(data)),
     base64: async (data: Data): Promise<string> => encodeBase64(await hash(data)),
     create,
+    sync,
   })
 }
 
