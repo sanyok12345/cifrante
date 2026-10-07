@@ -126,22 +126,38 @@ export function ige(key: Binary): Cipher {
     return output
   }
 
+  function encryptNativeChunks(
+    data: Uint8Array,
+    initial: Uint8Array,
+    encryptBlocks: (iv: Uint8Array, blocks: Uint8Array) => Uint8Array | undefined,
+  ): Uint8Array<ArrayBuffer> | undefined {
+    const output = new Uint8Array(data.length)
+    let chain: Uint8Array = Uint8Array.from(initial.subarray(0, 16))
+    let before: Uint8Array = ZERO_BLOCK
+    let previous: Uint8Array = Uint8Array.from(initial.subarray(16, 32))
+
+    for (let offset = 0; offset < data.length; offset += SLICE) {
+      const slice = data.subarray(offset, offset + SLICE)
+      const prepared = chainInput(slice, before, previous)
+      const blocks = encryptBlocks(chain, prepared)
+
+      if (blocks === undefined) {
+        return undefined
+      }
+
+      ;[before, previous] = chainOutput(blocks, prepared, before, previous, output.subarray(offset, offset + slice.length))
+      chain = Uint8Array.from(blocks.subarray(blocks.length - 16))
+    }
+
+    return output
+  }
+
   function encryptNativeSync(data: Uint8Array, initial: Uint8Array): Uint8Array<ArrayBuffer> | undefined {
     if (data.length < NATIVE_SYNC_THRESHOLD || !native.encryptBlocksSync || !native.available()) {
       return undefined
     }
 
-    const previous = initial.subarray(16, 32)
-    const prepared = chainInput(data, ZERO_BLOCK, previous)
-    const blocks = native.encryptBlocksSync(initial.subarray(0, 16), prepared)
-
-    if (blocks === undefined) {
-      return undefined
-    }
-
-    const output = new Uint8Array(data.length)
-    chainOutput(blocks, prepared, ZERO_BLOCK, previous, output)
-    return output
+    return encryptNativeChunks(data, initial, native.encryptBlocksSync)
   }
 
   async function encryptNative(data: Uint8Array, initial: Uint8Array): Promise<Uint8Array<ArrayBuffer> | undefined> {
