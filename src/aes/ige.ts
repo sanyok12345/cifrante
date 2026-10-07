@@ -1,15 +1,16 @@
 import { toBinaryView, toBytesView } from '../bytes.js'
 import { InvalidInputError } from '../errors.js'
 import { lazy } from '../lazy.js'
-import { nativeCipher } from '../native/web.js'
+import { nativeCipher, nativeIge } from '../native/web.js'
 import type { Binary } from '../types.js'
 import { createAesWasm } from '../wasm/aes.js'
 import { SLICE, yieldNow } from '../yield.js'
 import type { Cipher, CipherOptions } from './aes.js'
 import { AesBlock, ivBytes, keyBytes } from './block.js'
 
-const NATIVE_SYNC_THRESHOLD = 512
-const NATIVE_ASYNC_THRESHOLD = 65536
+const CBC_SYNC_THRESHOLD = 512
+const CBC_ASYNC_THRESHOLD = 65536
+const ZERO_BLOCK = new Uint8Array(16)
 
 function words(bytes: Uint8Array): Uint32Array {
   return new Uint32Array(bytes.buffer, bytes.byteOffset, bytes.length >>> 2)
@@ -70,17 +71,29 @@ function chainOutput(
     }
   }
 
-  const blocksCount = target.length >>> 2
-  const last = new Uint8Array((blocksCount & 1 ? even : odd).buffer)
-  const beforeLast = new Uint8Array((blocksCount & 1 ? odd : even).buffer)
+  const count = target.length >>> 2
+  const last = new Uint8Array((count & 1 ? even : odd).buffer)
+  const beforeLast = new Uint8Array((count & 1 ? odd : even).buffer)
 
   return [beforeLast, last]
 }
 
-const ZERO_BLOCK = new Uint8Array(16)
+function continuation(
+  input: Uint8Array,
+  output: Uint8Array,
+  end: number,
+  decrypt: boolean,
+): Uint8Array<ArrayBuffer> {
+  const iv = new Uint8Array(32)
+
+  iv.set((decrypt ? input : output).subarray(end - 16, end))
+  iv.set((decrypt ? output : input).subarray(end - 16, end), 16)
+  return iv
+}
 
 export function ige(key: Binary): Cipher {
   const secret = keyBytes(key)
+  const accelerated = nativeIge()
   const native = nativeCipher('cbc', secret)
   const prepare = lazy(() => createAesWasm(secret))
   let block: AesBlock | undefined
@@ -126,7 +139,52 @@ export function ige(key: Binary): Cipher {
     return output
   }
 
-  function encryptNativeChunks(
+  function portable(
+    data: Uint8Array,
+    initial: Uint8Array,
+    decrypt: boolean,
+  ): Uint8Array<ArrayBuffer> {
+    const wasm = prepare()
+
+    return wasm ? wasm.transform('ige', data, initial, decrypt) : fallback(data, initial, decrypt)
+  }
+
+  function accelerate(
+    data: Uint8Array,
+    initial: Uint8Array,
+    decrypt: boolean,
+    output: Uint8Array,
+  ): void {
+    if (decrypt) {
+      accelerated!.decrypt(secret, initial, data, output)
+    } else {
+      accelerated!.encrypt(secret, initial, data, output)
+    }
+  }
+
+  async function accelerateAsync(
+    data: Uint8Array,
+    initial: Uint8Array,
+    decrypt: boolean,
+  ): Promise<Uint8Array<ArrayBuffer>> {
+    const output = new Uint8Array(data.length)
+    let iv = initial
+
+    for (let offset = 0; offset < data.length; offset += SLICE) {
+      const end = Math.min(offset + SLICE, data.length)
+
+      accelerate(data.subarray(offset, end), iv, decrypt, output.subarray(offset, end))
+
+      if (end < data.length) {
+        iv = continuation(data, output, end, decrypt)
+        await yieldNow()
+      }
+    }
+
+    return output
+  }
+
+  function encryptCbc(
     data: Uint8Array,
     initial: Uint8Array,
     encryptBlocks: (iv: Uint8Array, blocks: Uint8Array) => Uint8Array | undefined,
@@ -152,24 +210,19 @@ export function ige(key: Binary): Cipher {
     return output
   }
 
-  function encryptNativeSync(data: Uint8Array, initial: Uint8Array): Uint8Array<ArrayBuffer> | undefined {
-    if (data.length < NATIVE_SYNC_THRESHOLD || !native.encryptBlocksSync || !native.available()) {
-      return undefined
-    }
-
-    return encryptNativeChunks(data, initial, native.encryptBlocksSync)
-  }
-
-  async function encryptNative(data: Uint8Array, initial: Uint8Array): Promise<Uint8Array<ArrayBuffer> | undefined> {
+  async function encryptCbcAsync(
+    data: Uint8Array,
+    initial: Uint8Array,
+  ): Promise<Uint8Array<ArrayBuffer> | undefined> {
     const sync = native.encryptBlocksSync !== undefined
-    const threshold = sync ? NATIVE_SYNC_THRESHOLD : NATIVE_ASYNC_THRESHOLD
+    const threshold = sync ? CBC_SYNC_THRESHOLD : CBC_ASYNC_THRESHOLD
 
     if (data.length < threshold || !native.available() || (!sync && !native.encryptBlocks)) {
       return undefined
     }
 
     if (data.length <= SLICE && sync) {
-      return encryptNativeSync(data, initial)
+      return encryptCbc(data, initial, native.encryptBlocksSync!)
     }
 
     const output = new Uint8Array(data.length)
@@ -210,17 +263,22 @@ export function ige(key: Binary): Cipher {
       return new Uint8Array()
     }
 
-    if (!decrypt) {
-      const result = encryptNativeSync(data, initial)
+    if (accelerated) {
+      const output = new Uint8Array(data.length)
 
-      if (result !== undefined) {
-        return result
+      accelerate(data, initial, decrypt, output)
+      return output
+    }
+
+    if (!decrypt && data.length >= CBC_SYNC_THRESHOLD && native.encryptBlocksSync && native.available()) {
+      const output = encryptCbc(data, initial, native.encryptBlocksSync)
+
+      if (output !== undefined) {
+        return output
       }
     }
 
-    const wasm = prepare()
-
-    return wasm ? wasm.transform('ige', data, initial, decrypt) : fallback(data, initial, decrypt)
+    return portable(data, initial, decrypt)
   }
 
   async function transformAsync(
@@ -234,16 +292,20 @@ export function ige(key: Binary): Cipher {
       return new Uint8Array()
     }
 
-    if (!decrypt) {
-      const result = await encryptNative(data, initial)
+    if (accelerated) {
+      return accelerateAsync(data, initial, decrypt)
+    }
 
-      if (result !== undefined) {
-        return result
+    if (!decrypt) {
+      const output = await encryptCbcAsync(data, initial)
+
+      if (output !== undefined) {
+        return output
       }
     }
 
     if (data.length <= SLICE) {
-      return transform(data, initial, decrypt)
+      return portable(data, initial, decrypt)
     }
 
     const wasm = prepare()
