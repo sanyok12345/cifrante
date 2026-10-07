@@ -5,6 +5,7 @@ import { sha256Sync } from './hash/sha256.js'
 import { sha512Sync } from './hash/sha512.js'
 import { nativeHmac, nativeMac, nativeMacAvailable } from './native/web.js'
 import type { Binary, Data } from './types.js'
+import { SLICE, forEachSlice, stable } from './yield.js'
 
 export interface Hmac {
   (key: Binary, data: Data): Promise<Uint8Array>
@@ -96,6 +97,24 @@ export function createSyncHmac(name: string, hash: SyncHash, blockSize: number):
   return Object.assign(mac, { create })
 }
 
+export async function macAsync(
+  sync: SyncHmac,
+  key: Uint8Array,
+  input: Uint8Array,
+): Promise<Uint8Array> {
+  if (input.length <= SLICE) {
+    return sync(key, input)
+  }
+
+  const state = sync.create(key)
+
+  await forEachSlice(input, SLICE, (slice) => {
+    state.update(slice)
+  })
+
+  return state.digest()
+}
+
 function createHmac(name: string, sync: SyncHmac): Hmac {
   const create = (key: Binary): HmacState => new State(sync.create(key))
   const mac = async (key: Binary, data: Data): Promise<Uint8Array> => {
@@ -103,13 +122,15 @@ function createHmac(name: string, sync: SyncHmac): Hmac {
 
     try {
       if (!nativeMacAvailable(name, value)) {
-        return sync(value, toBytesView(data))
+        const input = toBytesView(data)
+
+        return await macAsync(sync, value, typeof data === 'string' ? input : stable(input))
       }
 
       const input = toBytes(data)
       const native = await nativeMac(name, value, input)
 
-      return native === undefined ? sync(value, input) : native
+      return native === undefined ? await macAsync(sync, value, input) : native
     } finally {
       value.fill(0)
     }
