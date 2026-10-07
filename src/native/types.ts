@@ -8,8 +8,14 @@ export interface NativeSealed {
   tag: Uint8Array
 }
 
+export interface NativeStream {
+  update(data: Uint8Array): Uint8Array
+  dispose(): void
+}
+
 export interface NativeCipher {
   available(): boolean
+  stream?(iv: Uint8Array): NativeStream | undefined
   encrypt(iv: Uint8Array, data: Uint8Array): Promise<Uint8Array | undefined>
   decrypt(iv: Uint8Array, data: Uint8Array): Promise<Uint8Array | undefined>
   encryptSync?(iv: Uint8Array, data: Uint8Array): Uint8Array | undefined

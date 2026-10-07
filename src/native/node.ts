@@ -32,6 +32,7 @@ import type {
   NativeHash,
   NativeIge,
   NativeOaep,
+  NativeStream,
   NativeRsaKey,
   NativeSealed,
 } from './types.js'
@@ -296,8 +297,28 @@ export function nativeCipher(
     return tail.length === 0 ? head : concat(head, tail)
   }
 
+  function stream(iv: Uint8Array): NativeStream | undefined {
+    if (mode !== 'ctr' || !supportsCipher(name)) {
+      return undefined
+    }
+
+    const cipher = createCipheriv(name, key, iv)
+
+    return {
+      update(data) {
+        const output = cipher.update(data)
+
+        return new Uint8Array(output.buffer, output.byteOffset, output.byteLength)
+      },
+      dispose() {
+        cipher.final()
+      },
+    }
+  }
+
   return {
     available: () => supportsCipher(name),
+    stream,
     encrypt: async (iv, data) => operate(iv, data, false),
     decrypt: async (iv, data) => operate(iv, data, true),
     encryptSync: (iv, data) => operate(iv, data, false),
