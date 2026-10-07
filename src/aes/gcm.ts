@@ -1,6 +1,7 @@
 import { toBinary, toBinaryView, toBytes, toBytesView } from '../bytes.js'
 import { AuthenticationError, InvalidInputError, InvalidNonceError } from '../errors.js'
 import { lazy } from '../lazy.js'
+import { SLICE } from '../yield.js'
 import { createAesWasm } from '../wasm/aes.js'
 import { nativeGcm } from '../native/web.js'
 import type { Binary, Data } from '../types.js'
@@ -226,6 +227,33 @@ export function gcm(
     return output
   }
 
+  function seal(input: Uint8Array, nonce: Uint8Array, aad: Uint8Array): Sealed {
+    const j0 = initialCounter(nonce)
+    const ciphertext = transform(input, j0)
+    return { ciphertext, tag: authenticationTag(ciphertext, aad, j0) }
+  }
+
+  function open(
+    ciphertext: Uint8Array,
+    nonce: Uint8Array,
+    aad: Uint8Array,
+    tag: Uint8Array,
+  ): Uint8Array<ArrayBuffer> {
+    const j0 = initialCounter(nonce)
+    const expected = authenticationTag(ciphertext, aad, j0)
+    let difference = 0
+
+    for (let i = 0; i < tagLength; i++) {
+      difference |= expected[i] ^ tag[i]
+    }
+
+    if (difference !== 0) {
+      throw new AuthenticationError('Invalid AES-GCM authentication tag')
+    }
+
+    return transform(ciphertext, j0)
+  }
+
   return {
     async encrypt(data, options) {
       const view = operationBytes(options)
@@ -246,12 +274,19 @@ export function gcm(
       const wasm = prepareWasm()
 
       if (wasm) {
+        if (input.length + aad.length > SLICE) {
+          return wasm.encryptGcmAsync(
+            useNative ? input : input.slice(),
+            useNative ? nonce : nonce.slice(),
+            useNative ? aad : aad.slice(),
+            tagLength,
+          )
+        }
+
         return wasm.encryptGcm(input, nonce, aad, tagLength)
       }
 
-      const j0 = initialCounter(nonce)
-      const ciphertext = transform(input, j0)
-      return { ciphertext, tag: authenticationTag(ciphertext, aad, j0) }
+      return seal(input, nonce, aad)
     },
 
     async decrypt(data, options) {
@@ -283,22 +318,19 @@ export function gcm(
       const wasm = prepareWasm()
 
       if (wasm) {
+        if (ciphertext.length + aad.length > SLICE) {
+          return wasm.decryptGcmAsync(
+            useNative ? ciphertext : ciphertext.slice(),
+            useNative ? nonce : nonce.slice(),
+            useNative ? aad : aad.slice(),
+            useNative ? tag : tag.slice(),
+          )
+        }
+
         return wasm.decryptGcm(ciphertext, nonce, aad, tag)
       }
 
-      const j0 = initialCounter(nonce)
-      const expected = authenticationTag(ciphertext, aad, j0)
-      let difference = 0
-
-      for (let i = 0; i < tagLength; i++) {
-        difference |= expected[i] ^ tag[i]
-      }
-
-      if (difference !== 0) {
-        throw new AuthenticationError('Invalid AES-GCM authentication tag')
-      }
-
-      return transform(ciphertext, j0)
+      return open(ciphertext, nonce, aad, tag)
     },
   }
 }

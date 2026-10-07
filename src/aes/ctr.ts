@@ -4,6 +4,7 @@ import { lazy } from '../lazy.js'
 import { createAesWasm } from '../wasm/aes.js'
 import { nativeCipher } from '../native/web.js'
 import type { Binary } from '../types.js'
+import { SLICE, stable } from '../yield.js'
 import type { Cipher } from './aes.js'
 import { AesBlock, ivBytes, keyBytes } from './block.js'
 
@@ -13,12 +14,7 @@ export function ctr(key: Binary): Cipher {
   const prepare = lazy(() => createAesWasm(secret))
   let block: AesBlock | undefined
 
-  async function transform(
-    data: Uint8Array,
-    initial: Uint8Array,
-    decrypt: boolean,
-    useNative: boolean,
-  ): Promise<Uint8Array> {
+  function validate(data: Uint8Array, initial: Uint8Array): void {
     let carry = Math.max(0, Math.ceil(data.length / 16) - 1)
 
     for (let i = 15; i >= 0; i--) {
@@ -28,23 +24,9 @@ export function ctr(key: Binary): Cipher {
     if (carry !== 0) {
       throw new InvalidInputError('AES-CTR counter would overflow')
     }
+  }
 
-    if (useNative) {
-      const result = await (decrypt
-        ? native.decrypt(initial, data)
-        : native.encrypt(initial, data))
-
-      if (result !== undefined) {
-        return result
-      }
-    }
-
-    const wasm = prepare()
-
-    if (wasm) {
-      return wasm.transform('ctr', data, initial, decrypt)
-    }
-
+  function fallback(data: Uint8Array, initial: Uint8Array): Uint8Array<ArrayBuffer> {
     block ??= new AesBlock(secret)
 
     const counter = initial.slice()
@@ -69,19 +51,58 @@ export function ctr(key: Binary): Cipher {
     return output
   }
 
+  function transform(
+    data: Uint8Array,
+    initial: Uint8Array,
+    decrypt: boolean,
+  ): Uint8Array<ArrayBuffer> {
+    const wasm = prepare()
+
+    return wasm ? wasm.transform('ctr', data, initial, decrypt) : fallback(data, initial)
+  }
+
+  async function transformAsync(
+    data: Uint8Array,
+    initial: Uint8Array,
+    decrypt: boolean,
+    useNative: boolean,
+  ): Promise<Uint8Array> {
+    validate(data, initial)
+
+    if (useNative) {
+      const result = await (decrypt
+        ? native.decrypt(initial, data)
+        : native.encrypt(initial, data))
+
+      if (result !== undefined) {
+        return result
+      }
+    }
+
+    if (data.length <= SLICE) {
+      return transform(data, initial, decrypt)
+    }
+
+    const wasm = prepare()
+
+    return wasm
+      ? wasm.transformAsync('ctr', useNative ? data : stable(data), initial, decrypt)
+      : fallback(data, initial)
+  }
+
   return {
     async encrypt(data, options) {
       const useNative = native.available()
       const input = useNative ? toBytes(data) : toBytesView(data)
       const initial = ivBytes(options, 16, useNative)
-      return transform(input, initial, false, useNative)
+      return transformAsync(input, initial, false, useNative)
     },
 
     async decrypt(data, options) {
       const useNative = native.available()
       const input = useNative ? toBinary(data) : toBinaryView(data)
       const initial = ivBytes(options, 16, useNative)
-      return transform(input, initial, true, useNative)
+      return transformAsync(input, initial, true, useNative)
     },
   }
 }
