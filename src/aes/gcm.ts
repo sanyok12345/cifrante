@@ -24,6 +24,8 @@ export interface Sealed {
 export interface AeadCipher {
   encrypt(data: Data, options: GcmOperationOptions): Promise<Sealed>
   decrypt(data: Sealed, options: GcmOperationOptions): Promise<Uint8Array>
+  encryptSync(data: Data, options: GcmOperationOptions): Sealed
+  decryptSync(data: Sealed, options: GcmOperationOptions): Uint8Array
 }
 
 class GHash {
@@ -331,6 +333,48 @@ export function gcm(
       }
 
       return open(ciphertext, nonce, aad, tag)
+    },
+
+    encryptSync(data, options) {
+      const { nonce, aad } = operationBytes(options)
+      const input = toBytesView(data)
+      checkLength(input.length)
+
+      const result = native.encryptSync?.(nonce, input, aad, tagLength)
+
+      if (result !== undefined) {
+        return result
+      }
+
+      const wasm = prepareWasm()
+
+      return wasm ? wasm.encryptGcm(input, nonce, aad, tagLength) : seal(input, nonce, aad)
+    },
+
+    decryptSync(data, options) {
+      if (data === null || typeof data !== 'object') {
+        throw new InvalidInputError('AES-GCM requires ciphertext and tag')
+      }
+
+      const { nonce, aad } = operationBytes(options)
+      const ciphertext = toBinaryView(data.ciphertext)
+      const tag = toBinaryView(data.tag)
+
+      if (tag.length !== tagLength) {
+        throw new AuthenticationError('Invalid AES-GCM authentication tag')
+      }
+
+      checkLength(ciphertext.length)
+
+      const result = native.decryptSync?.(nonce, ciphertext, aad, tag)
+
+      if (result !== undefined) {
+        return result
+      }
+
+      const wasm = prepareWasm()
+
+      return wasm ? wasm.decryptGcm(ciphertext, nonce, aad, tag) : open(ciphertext, nonce, aad, tag)
     },
   }
 }

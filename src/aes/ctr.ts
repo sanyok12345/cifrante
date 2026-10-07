@@ -90,6 +90,14 @@ export function ctr(key: Binary): Cipher {
       : fallback(data, initial)
   }
 
+  function transformSync(data: Uint8Array, initial: Uint8Array, decrypt: boolean): Uint8Array {
+    validate(data, initial)
+
+    const result = decrypt ? native.decryptSync?.(initial, data) : native.encryptSync?.(initial, data)
+
+    return result ?? transform(data, initial, decrypt)
+  }
+
   return {
     async encrypt(data, options) {
       const useNative = native.available()
@@ -103,6 +111,14 @@ export function ctr(key: Binary): Cipher {
       const input = useNative ? toBinary(data) : toBinaryView(data)
       const initial = ivBytes(options, 16, useNative)
       return transformAsync(input, initial, true, useNative)
+    },
+
+    encryptSync(data, options) {
+      return transformSync(toBytesView(data), ivBytes(options, 16, false), false)
+    },
+
+    decryptSync(data, options) {
+      return transformSync(toBinaryView(data), ivBytes(options, 16, false), true)
     },
   }
 }

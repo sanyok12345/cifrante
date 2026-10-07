@@ -12,6 +12,8 @@ export interface CipherOptions {
 export interface Cipher {
   encrypt(data: Data, options: CipherOptions): Promise<Uint8Array>
   decrypt(data: Binary, options: CipherOptions): Promise<Uint8Array>
+  encryptSync(data: Data, options: CipherOptions): Uint8Array
+  decryptSync(data: Binary, options: CipherOptions): Uint8Array
 }
 
 export interface AES {

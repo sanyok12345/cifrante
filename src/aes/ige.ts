@@ -4,7 +4,7 @@ import { lazy } from '../lazy.js'
 import type { Binary } from '../types.js'
 import { createAesWasm } from '../wasm/aes.js'
 import { SLICE, stable } from '../yield.js'
-import type { Cipher } from './aes.js'
+import type { Cipher, CipherOptions } from './aes.js'
 import { AesBlock, ivBytes, keyBytes } from './block.js'
 
 export function ige(key: Binary): Cipher {
@@ -94,6 +94,14 @@ export function ige(key: Binary): Cipher {
 
     async decrypt(data, options) {
       return transformAsync(toBinaryView(data), ivBytes(options, 32, false), true)
+    },
+
+    encryptSync(data, options: CipherOptions) {
+      return transform(toBytesView(data), ivBytes(options, 32, false), false)
+    },
+
+    decryptSync(data, options: CipherOptions) {
+      return transform(toBinaryView(data), ivBytes(options, 32, false), true)
     },
   }
 }

@@ -152,5 +152,32 @@ export function cbc(key: Binary): Cipher {
 
       return unpad(await transformAsync(input, initial, true, useNative))
     },
+
+    encryptSync(data, options) {
+      const input = toBytesView(data)
+      const initial = ivBytes(options, 16, false)
+      const result = native.encryptSync?.(initial, input)
+
+      if (result !== undefined) {
+        return result
+      }
+
+      const padded = pad(input)
+
+      try {
+        return transform(padded, initial, false)
+      } finally {
+        padded.fill(0)
+      }
+    },
+
+    decryptSync(data, options) {
+      const input = toBinaryView(data)
+      const initial = ivBytes(options, 16, false)
+
+      validate(input)
+
+      return native.decryptSync?.(initial, input) ?? unpad(transform(input, initial, true))
+    },
   }
 }
