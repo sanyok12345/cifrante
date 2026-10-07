@@ -105,14 +105,9 @@ static uint32_t hmac_finalize(void) {
   return hash_finalize(&state.work, state.previous);
 }
 
-static void iterate32(
-  uint64_t rounds, unsigned int words, void (*compress)(uint32_t *, const uint32_t *)
-) {
+static void begin32(unsigned int words) {
   uint32_t *message = state.message.words32;
-  uint32_t *chain = state.chain.words32;
   uint32_t *accumulator = state.accumulator.words32;
-  const uint32_t *inner = state.inner.sha256.words;
-  const uint32_t *outer = state.outer.sha256.words;
 
   for (unsigned int i = 0; i < 16; i++) {
     message[i] = 0;
@@ -125,8 +120,18 @@ static void iterate32(
     accumulator[i] = wasm_load32_be(state.previous + i * 4);
     message[i] = accumulator[i];
   }
+}
 
-  for (uint64_t round = 1; round < rounds; round++) {
+static void rounds32(
+  uint64_t count, unsigned int words, void (*compress)(uint32_t *, const uint32_t *)
+) {
+  uint32_t *message = state.message.words32;
+  uint32_t *chain = state.chain.words32;
+  uint32_t *accumulator = state.accumulator.words32;
+  const uint32_t *inner = state.inner.sha256.words;
+  const uint32_t *outer = state.outer.sha256.words;
+
+  for (uint64_t round = 0; round < count; round++) {
     for (unsigned int i = 0; i < 8; i++) {
       chain[i] = inner[i];
     }
@@ -149,18 +154,19 @@ static void iterate32(
       accumulator[i] ^= chain[i];
     }
   }
+}
+
+static void end32(unsigned int words) {
+  const uint32_t *accumulator = state.accumulator.words32;
 
   for (unsigned int i = 0; i < words; i++) {
     wasm_store32_be(output + i * 4, accumulator[i]);
   }
 }
 
-static void iterate64(uint64_t rounds) {
+static void begin64(void) {
   uint64_t *message = state.message.words64;
-  uint64_t *chain = state.chain.words64;
   uint64_t *accumulator = state.accumulator.words64;
-  const uint64_t *inner = state.inner.sha512.words;
-  const uint64_t *outer = state.outer.sha512.words;
 
   for (unsigned int i = 8; i < 16; i++) {
     message[i] = 0;
@@ -173,8 +179,16 @@ static void iterate64(uint64_t rounds) {
     accumulator[i] = wasm_load64_be(state.previous + i * 8);
     message[i] = accumulator[i];
   }
+}
 
-  for (uint64_t round = 1; round < rounds; round++) {
+static void rounds64(uint64_t count) {
+  uint64_t *message = state.message.words64;
+  uint64_t *chain = state.chain.words64;
+  uint64_t *accumulator = state.accumulator.words64;
+  const uint64_t *inner = state.inner.sha512.words;
+  const uint64_t *outer = state.outer.sha512.words;
+
+  for (uint64_t round = 0; round < count; round++) {
     for (unsigned int i = 0; i < 8; i++) {
       chain[i] = inner[i];
     }
@@ -193,10 +207,62 @@ static void iterate64(uint64_t rounds) {
       accumulator[i] ^= chain[i];
     }
   }
+}
 
+static void end64(void) {
   for (unsigned int i = 0; i < 8; i++) {
-    wasm_store64_be(output + i * 8, accumulator[i]);
+    wasm_store64_be(output + i * 8, state.accumulator.words64[i]);
   }
+}
+
+static void iterate_begin(void) {
+  switch (state.algorithm) {
+    case 1:
+      begin32(5);
+      break;
+    case 256:
+      begin32(8);
+      break;
+    default:
+      begin64();
+      break;
+  }
+}
+
+static void iterate_rounds(uint64_t count) {
+  switch (state.algorithm) {
+    case 1:
+      rounds32(count, 5, sha1_compress);
+      break;
+    case 256:
+      rounds32(count, 8, sha256_compress);
+      break;
+    default:
+      rounds64(count);
+      break;
+  }
+}
+
+static void iterate_end(void) {
+  switch (state.algorithm) {
+    case 1:
+      end32(5);
+      break;
+    case 256:
+      end32(8);
+      break;
+    default:
+      end64();
+      break;
+  }
+}
+
+WASM_EXPORT("state_ptr") uint8_t *state_ptr(void) {
+  return (uint8_t *)&state;
+}
+
+WASM_EXPORT("state_size") uint32_t state_size(void) {
+  return sizeof(state);
 }
 
 WASM_EXPORT("input_ptr") uint8_t *input_ptr(void) {
@@ -310,14 +376,11 @@ WASM_EXPORT("salt_update") uint32_t salt_update(uint32_t length) {
   return hash_update(&state.salted, input, length);
 }
 
-WASM_EXPORT("derive") uint32_t derive(uint32_t index, uint32_t iterations_low, uint32_t iterations_high) {
-  uint64_t iterations = ((uint64_t)iterations_high << 32) | iterations_low;
-
-  if ((state.phase != 2 && state.phase != 3) || index == 0 || iterations == 0) {
+WASM_EXPORT("derive_begin") uint32_t derive_begin(uint32_t index) {
+  if ((state.phase != 2 && state.phase != 3) || index == 0) {
     return 2;
   }
 
-  state.phase = 3;
   hash_copy(&state.work, &state.salted);
   uint8_t counter[4] = {
     (uint8_t)(index >> 24),
@@ -337,22 +400,54 @@ WASM_EXPORT("derive") uint32_t derive(uint32_t index, uint32_t iterations_low, u
     return status;
   }
 
-  switch (state.algorithm) {
-    case 1:
-      iterate32(iterations, 5, sha1_compress);
-      break;
-    case 256:
-      iterate32(iterations, 8, sha256_compress);
-      break;
-    default:
-      iterate64(iterations);
-      break;
+  iterate_begin();
+  state.phase = 4;
+  return 0;
+}
+
+WASM_EXPORT("derive_rounds") uint32_t derive_rounds(uint32_t count_low, uint32_t count_high) {
+  if (state.phase != 4) {
+    return 2;
   }
 
+  iterate_rounds(((uint64_t)count_high << 32) | count_low);
+  return 0;
+}
+
+WASM_EXPORT("derive_end") uint32_t derive_end(void) {
+  if (state.phase != 4) {
+    return 2;
+  }
+
+  iterate_end();
   wasm_clear(&state.work, sizeof(state.work));
   wasm_clear(state.previous, sizeof(state.previous));
   wasm_clear(&state.message, sizeof(state.message));
   wasm_clear(&state.chain, sizeof(state.chain));
   wasm_clear(&state.accumulator, sizeof(state.accumulator));
+  state.phase = 3;
   return 0;
+}
+
+WASM_EXPORT("derive") uint32_t derive(uint32_t index, uint32_t iterations_low, uint32_t iterations_high) {
+  uint64_t iterations = ((uint64_t)iterations_high << 32) | iterations_low;
+
+  if (iterations == 0) {
+    return 2;
+  }
+
+  uint32_t status = derive_begin(index);
+
+  if (status != 0) {
+    return status;
+  }
+
+  iterations--;
+  status = derive_rounds((uint32_t)iterations, (uint32_t)(iterations >> 32));
+
+  if (status != 0) {
+    return status;
+  }
+
+  return derive_end();
 }

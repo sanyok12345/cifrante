@@ -1,11 +1,12 @@
 import { assertLength, toBytes } from './bytes.js'
 import { InvalidInputError, UnsupportedError } from './errors.js'
 import { sha1Sync } from './hash/sha1.js'
-import { createSyncHmac, hmacSha256Sync, hmacSha512Sync } from './hmac.js'
+import { createSyncHmac, hmacSha256Sync, hmacSha512Sync, macAsync } from './hmac.js'
 import type { SyncHmac } from './hmac.js'
 import { nativeHkdf, nativePbkdf2 } from './native/web.js'
 import type { Data } from './types.js'
-import { pbkdf2Wasm } from './wasm/pbkdf2.js'
+import { pbkdf2Wasm, pbkdf2WasmAsync } from './wasm/pbkdf2.js'
+import { PBKDF2_SLICE, SLICE, yieldNow } from './yield.js'
 
 export type HashName = 'sha1' | 'sha256' | 'sha512'
 
@@ -86,7 +87,9 @@ async function pbkdf2(password: Data, salt: Data, options: Pbkdf2Options): Promi
       return Uint8Array.from(native)
     }
 
-    const wasm = pbkdf2Wasm(name, key, saltBytes, iterations, length)
+    const wasm = iterations > PBKDF2_SLICE || key.length + saltBytes.length > SLICE
+      ? await pbkdf2WasmAsync(name, key, saltBytes, iterations, length)
+      : pbkdf2Wasm(name, key, saltBytes, iterations, length)
 
     if (wasm !== undefined) {
       return wasm
@@ -113,6 +116,10 @@ async function pbkdf2(password: Data, salt: Data, options: Pbkdf2Options): Promi
 
         for (let i = 0; i < size; i++) {
           block[i] ^= u[i]
+        }
+
+        if (round % PBKDF2_SLICE === 0) {
+          await yieldNow()
         }
       }
 
@@ -161,7 +168,7 @@ async function hkdf(input: Data, options: HkdfOptions): Promise<Uint8Array> {
     }
 
     const output = new Uint8Array(length)
-    const prk = mac(salt, key)
+    const prk = key.length > SLICE ? await macAsync(mac, salt, key) : mac(salt, key)
     let previous: Uint8Array = new Uint8Array()
     const counter = new Uint8Array(1)
 
