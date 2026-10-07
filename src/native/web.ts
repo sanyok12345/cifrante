@@ -142,6 +142,10 @@ export function nativeEqual(_a: Uint8Array, _b: Uint8Array): boolean | undefined
   return undefined
 }
 
+export function nativeDigestSync(_name: string, _data: Uint8Array): Uint8Array | undefined {
+  return undefined
+}
+
 export function nativeDigestAvailable(name: string): boolean {
   const hash = hashName(name)
   const subtle = globalThis.crypto?.subtle

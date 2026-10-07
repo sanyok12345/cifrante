@@ -1,6 +1,6 @@
 import { encodeBase64, encodeHex, toBytesView } from '../bytes.js'
 import { InvalidInputError } from '../errors.js'
-import { nativeDigest, nativeDigestAvailable, nativeHash } from '../native/web.js'
+import { nativeDigest, nativeDigestAvailable, nativeDigestSync, nativeHash } from '../native/web.js'
 import type { WasmHashFactory } from '../wasm/hash.js'
 import { SLICE, forEachSlice, stable } from '../yield.js'
 import type { Data } from '../types.js'
@@ -122,6 +122,11 @@ export function createSyncHash(
   )
   const hash = (data: Data): Uint8Array => {
     const bytes = toBytesView(data)
+    const native = nativeDigestSync(name, bytes)
+
+    if (native !== undefined) {
+      return native
+    }
 
     if (createWasm && nativeHash(name) === undefined) {
       const output = createWasm.once(bytes)

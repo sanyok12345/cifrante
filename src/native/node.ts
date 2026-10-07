@@ -102,6 +102,20 @@ export function nativeDigestAvailable(name: string): boolean {
   return supportsHash(name)
 }
 
+export function nativeDigestSync(name: string, data: Uint8Array): Uint8Array | undefined {
+  if (!supportsHash(name)) {
+    return undefined
+  }
+
+  const digest = Reflect.get(crypto, 'hash') as typeof crypto.hash | undefined
+
+  return new Uint8Array(
+    typeof digest === 'function'
+      ? digest(name, data, 'buffer')
+      : createHash(name).update(data).digest(),
+  )
+}
+
 export function nativeMacAvailable(name: string, _secret: Uint8Array): boolean {
   return supportsHash(name)
 }
