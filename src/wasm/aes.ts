@@ -21,6 +21,7 @@ type AesExports = WebAssembly.Exports & {
   cbc_encrypt(length: number): number
   cbc_decrypt(length: number): number
   ctr_transform(length: number): number
+  gcm_prepare(): number
   gcm_begin(shortNonce: number): number
   gcm_nonce(length: number): number
   gcm_nonce_end(): number
@@ -72,6 +73,7 @@ export function createAesWasm(key: Uint8Array) {
   let state: Uint8Array<ArrayBuffer>
   let cipherState: Uint8Array<ArrayBuffer>
   let inputUsed = 0
+  let gcmReady = false
 
   try {
     memory.set(key, keyOffset)
@@ -189,6 +191,18 @@ export function createAesWasm(key: Uint8Array) {
     await feed(working, aad, engine.gcm_aad)
   }
 
+  function prepareGcm(): void {
+    if (gcmReady) {
+      return
+    }
+
+    run(state, () => {
+      check(engine.gcm_prepare())
+      state.set(memory.subarray(stateOffset, stateOffset + stateSize))
+    })
+    gcmReady = true
+  }
+
   function tag(length: number): Uint8Array<ArrayBuffer> {
     check(engine.gcm_tag())
     return memory.slice(tagOffset, tagOffset + length)
@@ -257,6 +271,7 @@ export function createAesWasm(key: Uint8Array) {
       aad: Uint8Array,
       tagLength: number,
     ): WasmSealed {
+      prepareGcm()
       const ciphertext = new Uint8Array(data.length)
 
       try {
@@ -277,6 +292,7 @@ export function createAesWasm(key: Uint8Array) {
       aad: Uint8Array,
       tagLength: number,
     ): Promise<WasmSealed> {
+      prepareGcm()
       const ciphertext = new Uint8Array(data.length)
       const working = state.slice()
 
@@ -298,6 +314,7 @@ export function createAesWasm(key: Uint8Array) {
       aad: Uint8Array,
       expected: Uint8Array,
     ): Uint8Array<ArrayBuffer> {
+      prepareGcm()
       let output: Uint8Array<ArrayBuffer> | undefined
 
       try {
@@ -321,6 +338,7 @@ export function createAesWasm(key: Uint8Array) {
       aad: Uint8Array,
       expected: Uint8Array,
     ): Promise<Uint8Array<ArrayBuffer>> {
+      prepareGcm()
       const working = state.slice()
       let output: Uint8Array<ArrayBuffer> | undefined
 

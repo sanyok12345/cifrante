@@ -16,6 +16,8 @@ typedef uint64_t GhashKey[4];
 
 typedef struct {
   GhashKey key[9];
+  uint32_t prepared;
+  uint32_t reserved;
   uint64_t hash[2];
   uint64_t nonce_length;
   uint64_t aad_length;
@@ -43,7 +45,6 @@ extern State state;
 extern uint8_t input[WASM_INPUT_CAPACITY];
 
 uint32_t aes_ready(uint32_t length, uint32_t alignment);
-void gcm_prepare(void);
 void aes_increment(uint8_t *counter, unsigned first);
 void aes_stream(
   uint8_t *counter,

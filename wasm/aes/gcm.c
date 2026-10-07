@@ -121,12 +121,21 @@ static inline void clmul64(uint64_t x, const GhashKey *y, uint64_t *high, uint64
   *high = b ^ (c >> 32);
 }
 
-void gcm_prepare(void) {
+WASM_EXPORT("gcm_prepare")
+uint32_t gcm_prepare(void) {
+  uint32_t status = aes_ready(0, 1);
+
+  if (status != 0) {
+    return status;
+  }
+
   uint8_t block[16] = {0};
 
   aes_encrypt(&state.aes, block);
   prepare_key(load_polynomial(block), load_polynomial(block + 8));
   wasm_clear(block, sizeof(block));
+  state.gcm.prepared = 1;
+  return 0;
 }
 
 static void reset(Gcm *gcm) {
@@ -232,6 +241,11 @@ uint32_t gcm_begin(uint32_t short_nonce) {
   }
 
   Gcm *gcm = &state.gcm;
+
+  if (!gcm->prepared) {
+    return 3;
+  }
+
   reset(gcm);
   gcm->stage = 1;
 

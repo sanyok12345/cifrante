@@ -39,11 +39,6 @@ uint32_t init(uint32_t key_length) {
   uint32_t status = aes_init(&state.aes, key, key_length);
   state.used = 16;
   wasm_clear(key, sizeof(key));
-
-  if (status == 0) {
-    gcm_prepare();
-  }
-
   return status;
 }
 
