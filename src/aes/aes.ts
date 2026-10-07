@@ -16,9 +16,18 @@ export interface Cipher {
   decryptSync(data: Binary, options: CipherOptions): Uint8Array
 }
 
+export interface CtrState {
+  update(data: Data): Uint8Array
+  dispose(): void
+}
+
+export interface CtrCipher extends Cipher {
+  create(options: CipherOptions): CtrState
+}
+
 export interface AES {
   ige(key: Binary): Cipher
-  ctr(key: Binary): Cipher
+  ctr(key: Binary): CtrCipher
   cbc(key: Binary): Cipher
   gcm(key: Binary, options?: GcmOptions): AeadCipher
 }

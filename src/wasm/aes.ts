@@ -265,6 +265,24 @@ export function createAesWasm(key: Uint8Array) {
       }
     },
 
+    ctrState(iv: Uint8Array) {
+      const working = cipherState.slice()
+
+      working.set(iv, ivOffset - stateOffset)
+
+      return {
+        update(data: Uint8Array): Uint8Array<ArrayBuffer> {
+          const output = new Uint8Array(data.length)
+
+          step(working, () => update(data, engine.ctr_transform, output))
+          return output
+        },
+        dispose(): void {
+          working.fill(0)
+        },
+      }
+    },
+
     encryptGcm(
       data: Uint8Array,
       nonce: Uint8Array,

@@ -1,51 +1,72 @@
 import { toBinary, toBinaryView, toBytes, toBytesView } from '../bytes.js'
+import { InvalidInputError } from '../errors.js'
 import { lazy } from '../lazy.js'
 import { createAesWasm } from '../wasm/aes.js'
 import { nativeCipher } from '../native/web.js'
+import type { NativeStream } from '../native/types.js'
 import type { Binary } from '../types.js'
 import { SLICE } from '../yield.js'
-import type { Cipher } from './aes.js'
+import type { CtrCipher } from './aes.js'
 import { AesBlock, ivBytes, keyBytes } from './block.js'
 
-export function ctr(key: Binary): Cipher {
+export function ctr(key: Binary): CtrCipher {
   const secret = keyBytes(key)
   const native = nativeCipher('ctr', secret)
   const prepare = lazy(() => createAesWasm(secret))
   let block: AesBlock | undefined
 
-  function fallback(data: Uint8Array, initial: Uint8Array): Uint8Array<ArrayBuffer> {
+  function software(initial: Uint8Array): NativeStream {
     block ??= new AesBlock(secret)
 
-    const counter = initial.slice()
-    const output = new Uint8Array(data.length)
+    const counter = Uint8Array.from(initial)
+    let keystream = new Uint8Array(16)
+    let used = 16
 
-    for (let offset = 0; offset < data.length; offset += 16) {
-      const stream = block.encrypt(counter)
+    return {
+      update(data) {
+        const output = new Uint8Array(data.length)
 
-      for (let i = 0; i < Math.min(16, data.length - offset); i++) {
-        output[offset + i] = data[offset + i] ^ stream[i]
-      }
+        for (let offset = 0; offset < data.length;) {
+          if (used === 16) {
+            keystream = block!.encrypt(counter)
+            used = 0
 
-      for (let i = 15; i >= 0; i--) {
-        counter[i] = (counter[i] + 1) & 255
+            for (let i = 15; i >= 0; i--) {
+              counter[i] = (counter[i] + 1) & 255
 
-        if (counter[i] !== 0) {
-          break
+              if (counter[i] !== 0) {
+                break
+              }
+            }
+          }
+
+          const count = Math.min(16 - used, data.length - offset)
+
+          for (let i = 0; i < count; i++) {
+            output[offset + i] = data[offset + i] ^ keystream[used + i]
+          }
+
+          used += count
+          offset += count
         }
-      }
-    }
 
-    return output
+        return output
+      },
+      dispose() {
+        counter.fill(0)
+        keystream.fill(0)
+      },
+    }
   }
 
   function transform(
     data: Uint8Array,
     initial: Uint8Array,
     decrypt: boolean,
-  ): Uint8Array<ArrayBuffer> {
+  ): Uint8Array {
     const wasm = prepare()
 
-    return wasm ? wasm.transform('ctr', data, initial, decrypt) : fallback(data, initial)
+    return wasm ? wasm.transform('ctr', data, initial, decrypt) : software(initial).update(data)
   }
 
   async function transformAsync(
@@ -70,7 +91,7 @@ export function ctr(key: Binary): Cipher {
 
     const wasm = prepare()
 
-    return wasm ? wasm.transformAsync('ctr', data, initial, decrypt) : fallback(data, initial)
+    return wasm ? wasm.transformAsync('ctr', data, initial, decrypt) : software(initial).update(data)
   }
 
   function transformSync(data: Uint8Array, initial: Uint8Array, decrypt: boolean): Uint8Array {
@@ -100,6 +121,31 @@ export function ctr(key: Binary): Cipher {
 
     decryptSync(data, options) {
       return transformSync(toBinaryView(data), ivBytes(options, 16, false), true)
+    },
+
+    create(options) {
+      const initial = ivBytes(options, 16)
+      const state = native.stream?.(initial) ?? prepare()?.ctrState(initial) ?? software(initial)
+      let disposed = false
+
+      return {
+        update(data) {
+          if (disposed) {
+            throw new InvalidInputError('AES-CTR state has been disposed')
+          }
+
+          const input = toBytesView(data)
+
+          return input.length === 0 ? new Uint8Array() : state.update(input)
+        },
+
+        dispose() {
+          if (!disposed) {
+            disposed = true
+            state.dispose()
+          }
+        },
+      }
     },
   }
 }
