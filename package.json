@@ -58,13 +58,13 @@
     "typescript": "^6.0.3"
   },
   "optionalDependencies": {
-    "@cifrante/darwin-arm64": "0.3.1",
-    "@cifrante/darwin-x64": "0.3.1",
-    "@cifrante/linux-arm64-gnu": "0.3.1",
-    "@cifrante/linux-arm64-musl": "0.3.1",
-    "@cifrante/linux-x64-gnu": "0.3.1",
-    "@cifrante/linux-x64-musl": "0.3.1",
-    "@cifrante/win32-arm64": "0.3.1",
-    "@cifrante/win32-x64": "0.3.1"
+    "@cifrante/darwin-arm64": "0.4.0",
+    "@cifrante/darwin-x64": "0.4.0",
+    "@cifrante/linux-arm64-gnu": "0.4.0",
+    "@cifrante/linux-arm64-musl": "0.4.0",
+    "@cifrante/linux-x64-gnu": "0.4.0",
+    "@cifrante/linux-x64-musl": "0.4.0",
+    "@cifrante/win32-arm64": "0.4.0",
+    "@cifrante/win32-x64": "0.4.0"
   }
 }
