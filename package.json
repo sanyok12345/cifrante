@@ -49,12 +49,22 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "make -C wasm && tsdown",
+    "build": "make -C wasm && make -C native && tsdown",
     "prepack": "npm run build"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",
     "tsdown": "^0.22.2",
     "typescript": "^6.0.3"
+  },
+  "optionalDependencies": {
+    "@cifrante/darwin-arm64": "0.3.1",
+    "@cifrante/darwin-x64": "0.3.1",
+    "@cifrante/linux-arm64-gnu": "0.3.1",
+    "@cifrante/linux-arm64-musl": "0.3.1",
+    "@cifrante/linux-x64-gnu": "0.3.1",
+    "@cifrante/linux-x64-musl": "0.3.1",
+    "@cifrante/win32-arm64": "0.3.1",
+    "@cifrante/win32-x64": "0.3.1"
   }
 }
