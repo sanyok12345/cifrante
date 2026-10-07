@@ -2,7 +2,7 @@ import { encodeBase64, encodeHex, toBytesView } from '../bytes.js'
 import { InvalidInputError } from '../errors.js'
 import { nativeDigest, nativeDigestAvailable, nativeDigestSync, nativeHash } from '../native/web.js'
 import type { WasmHashFactory } from '../wasm/hash.js'
-import { SLICE, forEachSlice, stable } from '../yield.js'
+import { SLICE, forEachSlice } from '../yield.js'
 import type { Data } from '../types.js'
 
 export interface Hash {
@@ -162,7 +162,7 @@ export function createHash(name: string, sync: SyncHash): Hash {
     const input = toBytesView(data)
 
     if (!nativeDigestAvailable(name)) {
-      return digestAsync(sync, typeof data === 'string' ? input : stable(input))
+      return digestAsync(sync, input)
     }
 
     const copy = typeof data === 'string' ? input : Uint8Array.from(input)

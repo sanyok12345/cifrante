@@ -4,7 +4,7 @@ import { lazy } from '../lazy.js'
 import { createAesWasm } from '../wasm/aes.js'
 import { nativeCipher } from '../native/web.js'
 import type { Binary } from '../types.js'
-import { SLICE, stable } from '../yield.js'
+import { SLICE } from '../yield.js'
 import type { Cipher } from './aes.js'
 import { AesBlock, ivBytes, keyBytes } from './block.js'
 
@@ -85,9 +85,7 @@ export function ctr(key: Binary): Cipher {
 
     const wasm = prepare()
 
-    return wasm
-      ? wasm.transformAsync('ctr', useNative ? data : stable(data), initial, decrypt)
-      : fallback(data, initial)
+    return wasm ? wasm.transformAsync('ctr', data, initial, decrypt) : fallback(data, initial)
   }
 
   function transformSync(data: Uint8Array, initial: Uint8Array, decrypt: boolean): Uint8Array {

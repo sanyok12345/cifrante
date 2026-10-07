@@ -43,7 +43,3 @@ export async function forEachSlice(
     }
   }
 }
-
-export function stable(data: Uint8Array, limit = SLICE): Uint8Array {
-  return data.length > limit ? data.slice() : data
-}

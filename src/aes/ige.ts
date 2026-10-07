@@ -4,7 +4,7 @@ import { lazy } from '../lazy.js'
 import { nativeCipher } from '../native/web.js'
 import type { Binary } from '../types.js'
 import { createAesWasm } from '../wasm/aes.js'
-import { SLICE, stable, yieldNow } from '../yield.js'
+import { SLICE, yieldNow } from '../yield.js'
 import type { Cipher, CipherOptions } from './aes.js'
 import { AesBlock, ivBytes, keyBytes } from './block.js'
 
@@ -52,7 +52,7 @@ function chainOutput(
   before: Uint8Array,
   previous: Uint8Array,
   output: Uint8Array<ArrayBuffer>,
-): void {
+): [Uint8Array, Uint8Array] {
   const target = words(output)
   const source = words(aligned(blocks))
   const chain = words(prepared)
@@ -69,6 +69,12 @@ function chainOutput(
       history[j] = plain
     }
   }
+
+  const blocksCount = target.length >>> 2
+  const last = new Uint8Array((blocksCount & 1 ? even : odd).buffer)
+  const beforeLast = new Uint8Array((blocksCount & 1 ? odd : even).buffer)
+
+  return [beforeLast, last]
 }
 
 const ZERO_BLOCK = new Uint8Array(16)
@@ -120,20 +126,13 @@ export function ige(key: Binary): Cipher {
     return output
   }
 
-  function chunkContext(data: Uint8Array, initial: Uint8Array, offset: number) {
-    return {
-      before: offset >= 32 ? data.subarray(offset - 32, offset - 16) : ZERO_BLOCK,
-      previous: offset >= 16 ? data.subarray(offset - 16, offset) : initial.subarray(16, 32),
-    }
-  }
-
   function encryptNativeSync(data: Uint8Array, initial: Uint8Array): Uint8Array<ArrayBuffer> | undefined {
     if (data.length < NATIVE_SYNC_THRESHOLD || !native.encryptBlocksSync || !native.available()) {
       return undefined
     }
 
-    const { before, previous } = chunkContext(data, initial, 0)
-    const prepared = chainInput(data, before, previous)
+    const previous = initial.subarray(16, 32)
+    const prepared = chainInput(data, ZERO_BLOCK, previous)
     const blocks = native.encryptBlocksSync(initial.subarray(0, 16), prepared)
 
     if (blocks === undefined) {
@@ -141,7 +140,7 @@ export function ige(key: Binary): Cipher {
     }
 
     const output = new Uint8Array(data.length)
-    chainOutput(blocks, prepared, before, previous, output)
+    chainOutput(blocks, prepared, ZERO_BLOCK, previous, output)
     return output
   }
 
@@ -157,14 +156,13 @@ export function ige(key: Binary): Cipher {
       return encryptNativeSync(data, initial)
     }
 
-    const source = stable(data)
-    const iv = Uint8Array.from(initial)
-    const output = new Uint8Array(source.length)
-    let chain: Uint8Array = iv.subarray(0, 16)
+    const output = new Uint8Array(data.length)
+    let chain: Uint8Array = Uint8Array.from(initial.subarray(0, 16))
+    let before: Uint8Array = ZERO_BLOCK
+    let previous: Uint8Array = Uint8Array.from(initial.subarray(16, 32))
 
-    for (let offset = 0; offset < source.length; offset += SLICE) {
-      const slice = source.subarray(offset, offset + SLICE)
-      const { before, previous } = chunkContext(source, iv, offset)
+    for (let offset = 0; offset < data.length; offset += SLICE) {
+      const slice = data.subarray(offset, offset + SLICE)
       const prepared = chainInput(slice, before, previous)
       const blocks = sync
         ? native.encryptBlocksSync!(chain, prepared)
@@ -174,10 +172,10 @@ export function ige(key: Binary): Cipher {
         return undefined
       }
 
-      chainOutput(blocks, prepared, before, previous, output.subarray(offset, offset + slice.length))
-      chain = blocks.subarray(blocks.length - 16)
+      ;[before, previous] = chainOutput(blocks, prepared, before, previous, output.subarray(offset, offset + slice.length))
+      chain = Uint8Array.from(blocks.subarray(blocks.length - 16))
 
-      if (sync && offset + SLICE < source.length) {
+      if (sync && offset + SLICE < data.length) {
         await yieldNow()
       }
     }
@@ -234,9 +232,7 @@ export function ige(key: Binary): Cipher {
 
     const wasm = prepare()
 
-    return wasm
-      ? wasm.transformAsync('ige', stable(data), initial, decrypt)
-      : fallback(data, initial, decrypt)
+    return wasm ? wasm.transformAsync('ige', data, initial, decrypt) : fallback(data, initial, decrypt)
   }
 
   return {

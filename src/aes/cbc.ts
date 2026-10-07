@@ -4,7 +4,7 @@ import { lazy } from '../lazy.js'
 import { nativeCipher } from '../native/web.js'
 import type { Binary } from '../types.js'
 import { createAesWasm } from '../wasm/aes.js'
-import { SLICE, stable } from '../yield.js'
+import { SLICE } from '../yield.js'
 import type { Cipher } from './aes.js'
 import { AesBlock, ivBytes, keyBytes } from './block.js'
 
@@ -64,7 +64,6 @@ export function cbc(key: Binary): Cipher {
     data: Uint8Array,
     initial: Uint8Array,
     decrypt: boolean,
-    copied: boolean,
   ): Promise<Uint8Array<ArrayBuffer>> {
     if (data.length <= SLICE) {
       return transform(data, initial, decrypt)
@@ -72,9 +71,7 @@ export function cbc(key: Binary): Cipher {
 
     const wasm = prepare()
 
-    return wasm
-      ? wasm.transformAsync('cbc', copied ? data : stable(data), initial, decrypt)
-      : fallback(data, initial, decrypt)
+    return wasm ? wasm.transformAsync('cbc', data, initial, decrypt) : fallback(data, initial, decrypt)
   }
 
   function pad(input: Uint8Array): Uint8Array<ArrayBuffer> {
@@ -129,7 +126,7 @@ export function cbc(key: Binary): Cipher {
       const padded = pad(input)
 
       try {
-        return await transformAsync(padded, initial, false, true)
+        return await transformAsync(padded, initial, false)
       } finally {
         padded.fill(0)
       }
@@ -150,7 +147,7 @@ export function cbc(key: Binary): Cipher {
         }
       }
 
-      return unpad(await transformAsync(input, initial, true, useNative))
+      return unpad(await transformAsync(input, initial, true))
     },
 
     encryptSync(data, options) {

@@ -5,7 +5,7 @@ import { sha256Sync } from './hash/sha256.js'
 import { sha512Sync } from './hash/sha512.js'
 import { nativeHmac, nativeMac, nativeMacAvailable } from './native/web.js'
 import type { Binary, Data } from './types.js'
-import { SLICE, forEachSlice, stable } from './yield.js'
+import { SLICE, forEachSlice } from './yield.js'
 
 export interface Hmac {
   (key: Binary, data: Data): Promise<Uint8Array>
@@ -125,7 +125,7 @@ function createHmac(name: string, sync: SyncHmac): Hmac {
       if (!nativeMacAvailable(name, value)) {
         const input = toBytesView(data)
 
-        return await macAsync(sync, value, typeof data === 'string' ? input : stable(input))
+        return await macAsync(sync, value, input)
       }
 
       const input = toBytes(data)

@@ -277,12 +277,7 @@ export function gcm(
 
       if (wasm) {
         if (input.length + aad.length > SLICE) {
-          return wasm.encryptGcmAsync(
-            useNative ? input : input.slice(),
-            useNative ? nonce : nonce.slice(),
-            useNative ? aad : aad.slice(),
-            tagLength,
-          )
+          return wasm.encryptGcmAsync(input, nonce, aad, tagLength)
         }
 
         return wasm.encryptGcm(input, nonce, aad, tagLength)
@@ -321,12 +316,7 @@ export function gcm(
 
       if (wasm) {
         if (ciphertext.length + aad.length > SLICE) {
-          return wasm.decryptGcmAsync(
-            useNative ? ciphertext : ciphertext.slice(),
-            useNative ? nonce : nonce.slice(),
-            useNative ? aad : aad.slice(),
-            useNative ? tag : tag.slice(),
-          )
+          return wasm.decryptGcmAsync(useNative ? ciphertext : ciphertext.slice(), nonce, aad, tag)
         }
 
         return wasm.decryptGcm(ciphertext, nonce, aad, tag)
