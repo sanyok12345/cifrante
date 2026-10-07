@@ -12,14 +12,15 @@
 
 typedef void (*HashCompress)(void *, const uint8_t *);
 
-static inline uint32_t hash_read32(const uint8_t *bytes) {
-  return ((uint32_t)bytes[0] << 24) | ((uint32_t)bytes[1] << 16)
-    | ((uint32_t)bytes[2] << 8) | bytes[3];
-}
+static inline void hash_copy(uint8_t *destination, const uint8_t *source, size_t length) {
+  size_t i = 0;
 
-static inline void hash_write64(uint8_t *bytes, uint64_t value) {
-  for (unsigned int i = 0; i < 8; i++) {
-    bytes[7 - i] = (uint8_t)(value >> (i * 8));
+  for (; i + 8 <= length; i += 8) {
+    *(wasm_u64 *)(destination + i) = *(const wasm_u64 *)(source + i);
+  }
+
+  for (; i < length; i++) {
+    destination[i] = source[i];
   }
 }
 
@@ -36,10 +37,7 @@ static inline void hash_blocks(
       count = length;
     }
 
-    for (size_t i = 0; i < count; i++) {
-      block[*buffered + i] = input[i];
-    }
-
+    hash_copy(block + *buffered, input, count);
     *buffered += (uint32_t)count;
     position = count;
 
@@ -57,10 +55,7 @@ static inline void hash_blocks(
   if (position < length) {
     size_t count = length - position;
 
-    for (size_t i = 0; i < count; i++) {
-      block[i] = input[position + i];
-    }
-
+    hash_copy(block, input + position, count);
     *buffered = (uint32_t)count;
   }
 }
@@ -109,14 +104,11 @@ static inline uint32_t hash32_finalize(
   }
 
   hash_pad(state, state->block, state->buffered, 64, 8, compress);
-  hash_write64(state->block + 56, state->length << 3);
+  wasm_store64_be(state->block + 56, state->length << 3);
   compress(state, state->block);
 
   for (unsigned int i = 0; i < words; i++) {
-    output[i * 4] = (uint8_t)(state->words[i] >> 24);
-    output[i * 4 + 1] = (uint8_t)(state->words[i] >> 16);
-    output[i * 4 + 2] = (uint8_t)(state->words[i] >> 8);
-    output[i * 4 + 3] = (uint8_t)state->words[i];
+    wasm_store32_be(output + i * 4, state->words[i]);
   }
 
   wasm_clear(state, sizeof(*state));

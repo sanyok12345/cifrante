@@ -27,6 +27,14 @@ typedef struct {
   uint32_t finalized;
 } Sha512;
 
+void sha1_compress(uint32_t *state, const uint32_t *message);
+void sha256_compress(uint32_t *state, const uint32_t *message);
+void sha512_compress(uint64_t *state, const uint64_t *message);
+
+extern const uint32_t sha1_initial[5];
+extern const uint32_t sha256_initial[8];
+extern const uint64_t sha512_initial[8];
+
 void sha1_init(Sha1 *state);
 uint32_t sha1_update(Sha1 *state, const uint8_t *input, size_t length);
 uint32_t sha1_finalize(Sha1 *state, uint8_t *output);

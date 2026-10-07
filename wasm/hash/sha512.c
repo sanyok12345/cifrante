@@ -5,14 +5,14 @@
 
 #include "buffer.h"
 
-static const uint64_t initial[8] = {
+const uint64_t sha512_initial[8] = {
   0x6a09e667f3bcc908ull, 0xbb67ae8584caa73bull,
   0x3c6ef372fe94f82bull, 0xa54ff53a5f1d36f1ull,
   0x510e527fade682d1ull, 0x9b05688c2b3e6c1full,
   0x1f83d9abfb41bd6bull, 0x5be0cd19137e2179ull,
 };
 
-static const uint64_t constants[80] = {
+static const uint64_t K[80] = {
   0x428a2f98d728ae22ull, 0x7137449123ef65cdull,
   0xb5c0fbcfec4d3b2full, 0xe9b5dba58189dbbcull,
   0x3956c25bf348b538ull, 0x59f111f1b605d019ull,
@@ -55,71 +55,105 @@ static const uint64_t constants[80] = {
   0x5fcb6fab3ad6faecull, 0x6c44198c4a475817ull,
 };
 
-static uint64_t rotate(uint64_t value, unsigned int bits) {
-  return (value >> bits) | (value << (64u - bits));
+#define ROR(x, n) (((x) >> (n)) | ((x) << (64u - (n))))
+#define S0(x) (ROR(x, 1) ^ ROR(x, 8) ^ ((x) >> 7))
+#define S1(x) (ROR(x, 19) ^ ROR(x, 61) ^ ((x) >> 6))
+#define E0(x) (ROR(x, 28) ^ ROR(x, 34) ^ ROR(x, 39))
+#define E1(x) (ROR(x, 14) ^ ROR(x, 18) ^ ROR(x, 41))
+#define CH(e, f, g) ((g) ^ ((e) & ((f) ^ (g))))
+#define MAJ(a, b, c) (((a) & (b)) | ((c) & ((a) | (b))))
+
+#define ROUND(a, b, c, d, e, f, g, h, i, w) \
+  do { \
+    uint64_t t1 = h + E1(e) + CH(e, f, g) + K[i] + (w); \
+    uint64_t t2 = E0(a) + MAJ(a, b, c); \
+    d += t1; \
+    h = t1 + t2; \
+  } while (0)
+
+#define EXPAND(w0, w1, w9, w14) (w0 += S1(w14) + w9 + S0(w1))
+
+#define ROUNDS16(i, a, b, c, d, e, f, g, h) \
+  ROUND(a, b, c, d, e, f, g, h, i + 0, w0); \
+  ROUND(h, a, b, c, d, e, f, g, i + 1, w1); \
+  ROUND(g, h, a, b, c, d, e, f, i + 2, w2); \
+  ROUND(f, g, h, a, b, c, d, e, i + 3, w3); \
+  ROUND(e, f, g, h, a, b, c, d, i + 4, w4); \
+  ROUND(d, e, f, g, h, a, b, c, i + 5, w5); \
+  ROUND(c, d, e, f, g, h, a, b, i + 6, w6); \
+  ROUND(b, c, d, e, f, g, h, a, i + 7, w7); \
+  ROUND(a, b, c, d, e, f, g, h, i + 8, w8); \
+  ROUND(h, a, b, c, d, e, f, g, i + 9, w9); \
+  ROUND(g, h, a, b, c, d, e, f, i + 10, w10); \
+  ROUND(f, g, h, a, b, c, d, e, i + 11, w11); \
+  ROUND(e, f, g, h, a, b, c, d, i + 12, w12); \
+  ROUND(d, e, f, g, h, a, b, c, i + 13, w13); \
+  ROUND(c, d, e, f, g, h, a, b, i + 14, w14); \
+  ROUND(b, c, d, e, f, g, h, a, i + 15, w15)
+
+#define EXPAND16() \
+  EXPAND(w0, w1, w9, w14); \
+  EXPAND(w1, w2, w10, w15); \
+  EXPAND(w2, w3, w11, w0); \
+  EXPAND(w3, w4, w12, w1); \
+  EXPAND(w4, w5, w13, w2); \
+  EXPAND(w5, w6, w14, w3); \
+  EXPAND(w6, w7, w15, w4); \
+  EXPAND(w7, w8, w0, w5); \
+  EXPAND(w8, w9, w1, w6); \
+  EXPAND(w9, w10, w2, w7); \
+  EXPAND(w10, w11, w3, w8); \
+  EXPAND(w11, w12, w4, w9); \
+  EXPAND(w12, w13, w5, w10); \
+  EXPAND(w13, w14, w6, w11); \
+  EXPAND(w14, w15, w7, w12); \
+  EXPAND(w15, w0, w8, w13)
+
+void sha512_compress(uint64_t *state, const uint64_t *message) {
+  uint64_t w0 = message[0], w1 = message[1], w2 = message[2], w3 = message[3];
+  uint64_t w4 = message[4], w5 = message[5], w6 = message[6], w7 = message[7];
+  uint64_t w8 = message[8], w9 = message[9], w10 = message[10], w11 = message[11];
+  uint64_t w12 = message[12], w13 = message[13], w14 = message[14], w15 = message[15];
+  uint64_t a = state[0], b = state[1], c = state[2], d = state[3];
+  uint64_t e = state[4], f = state[5], g = state[6], h = state[7];
+
+#pragma clang loop unroll(disable)
+  for (unsigned int i = 0;; i += 16) {
+    ROUNDS16(i, a, b, c, d, e, f, g, h);
+
+    if (i == 64) {
+      break;
+    }
+
+    EXPAND16();
+  }
+
+  state[0] += a;
+  state[1] += b;
+  state[2] += c;
+  state[3] += d;
+  state[4] += e;
+  state[5] += f;
+  state[6] += g;
+  state[7] += h;
 }
 
 static void compress(void *context, const uint8_t *block) {
-  Sha512 *state = context;
-  uint64_t words[80];
+  uint64_t message[16];
 
   for (unsigned int i = 0; i < 16; i++) {
-    words[i] = ((uint64_t)hash_read32(block + i * 8) << 32)
-      | hash_read32(block + i * 8 + 4);
+    message[i] = wasm_load64_be(block + i * 8);
   }
 
-  for (unsigned int i = 16; i < 80; i++) {
-    uint64_t x = words[i - 15];
-    uint64_t y = words[i - 2];
-    uint64_t s0 = rotate(x, 1) ^ rotate(x, 8) ^ (x >> 7);
-    uint64_t s1 = rotate(y, 19) ^ rotate(y, 61) ^ (y >> 6);
-
-    words[i] = words[i - 16] + s0 + words[i - 7] + s1;
-  }
-
-  uint64_t a = state->words[0];
-  uint64_t b = state->words[1];
-  uint64_t c = state->words[2];
-  uint64_t d = state->words[3];
-  uint64_t e = state->words[4];
-  uint64_t f = state->words[5];
-  uint64_t g = state->words[6];
-  uint64_t h = state->words[7];
-
-  for (unsigned int i = 0; i < 80; i++) {
-    uint64_t s1 = rotate(e, 14) ^ rotate(e, 18) ^ rotate(e, 41);
-    uint64_t choice = (e & f) ^ (~e & g);
-    uint64_t t1 = h + s1 + choice + constants[i] + words[i];
-    uint64_t s0 = rotate(a, 28) ^ rotate(a, 34) ^ rotate(a, 39);
-    uint64_t majority = (a & b) ^ (a & c) ^ (b & c);
-    uint64_t t2 = s0 + majority;
-
-    h = g;
-    g = f;
-    f = e;
-    e = d + t1;
-    d = c;
-    c = b;
-    b = a;
-    a = t1 + t2;
-  }
-
-  state->words[0] += a;
-  state->words[1] += b;
-  state->words[2] += c;
-  state->words[3] += d;
-  state->words[4] += e;
-  state->words[5] += f;
-  state->words[6] += g;
-  state->words[7] += h;
-  wasm_clear(words, sizeof(words));
+  sha512_compress(((Sha512 *)context)->words, message);
+  wasm_clear(message, sizeof(message));
 }
 
 void sha512_init(Sha512 *state) {
   wasm_clear(state, sizeof(*state));
 
   for (unsigned int i = 0; i < 8; i++) {
-    state->words[i] = initial[i];
+    state->words[i] = sha512_initial[i];
   }
 }
 
@@ -151,12 +185,12 @@ uint32_t sha512_finalize(Sha512 *state, uint8_t *output) {
   }
 
   hash_pad(state, state->block, state->buffered, 128, 16, compress);
-  hash_write64(state->block + 112, (state->length_high << 3) | (state->length_low >> 61));
-  hash_write64(state->block + 120, state->length_low << 3);
+  wasm_store64_be(state->block + 112, (state->length_high << 3) | (state->length_low >> 61));
+  wasm_store64_be(state->block + 120, state->length_low << 3);
   compress(state, state->block);
 
   for (unsigned int i = 0; i < 8; i++) {
-    hash_write64(output + i * 8, state->words[i]);
+    wasm_store64_be(output + i * 8, state->words[i]);
   }
 
   wasm_clear(state, sizeof(*state));

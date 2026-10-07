@@ -5,12 +5,12 @@
 
 #include "buffer.h"
 
-static const uint32_t initial[8] = {
+const uint32_t sha256_initial[8] = {
   0x6a09e667u, 0xbb67ae85u, 0x3c6ef372u, 0xa54ff53au,
   0x510e527fu, 0x9b05688cu, 0x1f83d9abu, 0x5be0cd19u,
 };
 
-static const uint32_t constants[64] = {
+static const uint32_t K[64] = {
   0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u,
   0x3956c25bu, 0x59f111f1u, 0x923f82a4u, 0xab1c5ed5u,
   0xd807aa98u, 0x12835b01u, 0x243185beu, 0x550c7dc3u,
@@ -29,71 +29,105 @@ static const uint32_t constants[64] = {
   0x90befffau, 0xa4506cebu, 0xbef9a3f7u, 0xc67178f2u,
 };
 
-static uint32_t rotate(uint32_t value, unsigned int bits) {
-  return (value >> bits) | (value << (32u - bits));
+#define ROR(x, n) (((x) >> (n)) | ((x) << (32u - (n))))
+#define S0(x) (ROR(x, 7) ^ ROR(x, 18) ^ ((x) >> 3))
+#define S1(x) (ROR(x, 17) ^ ROR(x, 19) ^ ((x) >> 10))
+#define E0(x) (ROR(x, 2) ^ ROR(x, 13) ^ ROR(x, 22))
+#define E1(x) (ROR(x, 6) ^ ROR(x, 11) ^ ROR(x, 25))
+#define CH(e, f, g) ((g) ^ ((e) & ((f) ^ (g))))
+#define MAJ(a, b, c) (((a) & (b)) | ((c) & ((a) | (b))))
+
+#define ROUND(a, b, c, d, e, f, g, h, i, w) \
+  do { \
+    uint32_t t1 = h + E1(e) + CH(e, f, g) + K[i] + (w); \
+    uint32_t t2 = E0(a) + MAJ(a, b, c); \
+    d += t1; \
+    h = t1 + t2; \
+  } while (0)
+
+#define EXPAND(w0, w1, w9, w14) (w0 += S1(w14) + w9 + S0(w1))
+
+#define ROUNDS16(i, a, b, c, d, e, f, g, h) \
+  ROUND(a, b, c, d, e, f, g, h, i + 0, w0); \
+  ROUND(h, a, b, c, d, e, f, g, i + 1, w1); \
+  ROUND(g, h, a, b, c, d, e, f, i + 2, w2); \
+  ROUND(f, g, h, a, b, c, d, e, i + 3, w3); \
+  ROUND(e, f, g, h, a, b, c, d, i + 4, w4); \
+  ROUND(d, e, f, g, h, a, b, c, i + 5, w5); \
+  ROUND(c, d, e, f, g, h, a, b, i + 6, w6); \
+  ROUND(b, c, d, e, f, g, h, a, i + 7, w7); \
+  ROUND(a, b, c, d, e, f, g, h, i + 8, w8); \
+  ROUND(h, a, b, c, d, e, f, g, i + 9, w9); \
+  ROUND(g, h, a, b, c, d, e, f, i + 10, w10); \
+  ROUND(f, g, h, a, b, c, d, e, i + 11, w11); \
+  ROUND(e, f, g, h, a, b, c, d, i + 12, w12); \
+  ROUND(d, e, f, g, h, a, b, c, i + 13, w13); \
+  ROUND(c, d, e, f, g, h, a, b, i + 14, w14); \
+  ROUND(b, c, d, e, f, g, h, a, i + 15, w15)
+
+#define EXPAND16() \
+  EXPAND(w0, w1, w9, w14); \
+  EXPAND(w1, w2, w10, w15); \
+  EXPAND(w2, w3, w11, w0); \
+  EXPAND(w3, w4, w12, w1); \
+  EXPAND(w4, w5, w13, w2); \
+  EXPAND(w5, w6, w14, w3); \
+  EXPAND(w6, w7, w15, w4); \
+  EXPAND(w7, w8, w0, w5); \
+  EXPAND(w8, w9, w1, w6); \
+  EXPAND(w9, w10, w2, w7); \
+  EXPAND(w10, w11, w3, w8); \
+  EXPAND(w11, w12, w4, w9); \
+  EXPAND(w12, w13, w5, w10); \
+  EXPAND(w13, w14, w6, w11); \
+  EXPAND(w14, w15, w7, w12); \
+  EXPAND(w15, w0, w8, w13)
+
+void sha256_compress(uint32_t *state, const uint32_t *message) {
+  uint32_t w0 = message[0], w1 = message[1], w2 = message[2], w3 = message[3];
+  uint32_t w4 = message[4], w5 = message[5], w6 = message[6], w7 = message[7];
+  uint32_t w8 = message[8], w9 = message[9], w10 = message[10], w11 = message[11];
+  uint32_t w12 = message[12], w13 = message[13], w14 = message[14], w15 = message[15];
+  uint32_t a = state[0], b = state[1], c = state[2], d = state[3];
+  uint32_t e = state[4], f = state[5], g = state[6], h = state[7];
+
+#pragma clang loop unroll(disable)
+  for (unsigned int i = 0;; i += 16) {
+    ROUNDS16(i, a, b, c, d, e, f, g, h);
+
+    if (i == 48) {
+      break;
+    }
+
+    EXPAND16();
+  }
+
+  state[0] += a;
+  state[1] += b;
+  state[2] += c;
+  state[3] += d;
+  state[4] += e;
+  state[5] += f;
+  state[6] += g;
+  state[7] += h;
 }
 
 static void compress(void *context, const uint8_t *block) {
-  Sha256 *state = context;
-  uint32_t words[64];
+  uint32_t message[16];
 
   for (unsigned int i = 0; i < 16; i++) {
-    words[i] = hash_read32(block + i * 4);
+    message[i] = wasm_load32_be(block + i * 4);
   }
 
-  for (unsigned int i = 16; i < 64; i++) {
-    uint32_t x = words[i - 15];
-    uint32_t y = words[i - 2];
-    uint32_t s0 = rotate(x, 7) ^ rotate(x, 18) ^ (x >> 3);
-    uint32_t s1 = rotate(y, 17) ^ rotate(y, 19) ^ (y >> 10);
-
-    words[i] = words[i - 16] + s0 + words[i - 7] + s1;
-  }
-
-  uint32_t a = state->words[0];
-  uint32_t b = state->words[1];
-  uint32_t c = state->words[2];
-  uint32_t d = state->words[3];
-  uint32_t e = state->words[4];
-  uint32_t f = state->words[5];
-  uint32_t g = state->words[6];
-  uint32_t h = state->words[7];
-
-  for (unsigned int i = 0; i < 64; i++) {
-    uint32_t s1 = rotate(e, 6) ^ rotate(e, 11) ^ rotate(e, 25);
-    uint32_t choice = (e & f) ^ (~e & g);
-    uint32_t t1 = h + s1 + choice + constants[i] + words[i];
-    uint32_t s0 = rotate(a, 2) ^ rotate(a, 13) ^ rotate(a, 22);
-    uint32_t majority = (a & b) ^ (a & c) ^ (b & c);
-    uint32_t t2 = s0 + majority;
-
-    h = g;
-    g = f;
-    f = e;
-    e = d + t1;
-    d = c;
-    c = b;
-    b = a;
-    a = t1 + t2;
-  }
-
-  state->words[0] += a;
-  state->words[1] += b;
-  state->words[2] += c;
-  state->words[3] += d;
-  state->words[4] += e;
-  state->words[5] += f;
-  state->words[6] += g;
-  state->words[7] += h;
-
-  wasm_clear(words, sizeof(words));
+  sha256_compress(((Sha256 *)context)->words, message);
+  wasm_clear(message, sizeof(message));
 }
 
 void sha256_init(Sha256 *state) {
   wasm_clear(state, sizeof(*state));
 
   for (unsigned int i = 0; i < 8; i++) {
-    state->words[i] = initial[i];
+    state->words[i] = sha256_initial[i];
   }
 }
 
