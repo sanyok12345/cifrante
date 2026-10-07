@@ -12,11 +12,22 @@ typedef union {
   uint64_t words[sizeof(Sha512) / sizeof(uint64_t)];
 } Hash;
 
+typedef union {
+  uint32_t words32[8];
+  uint64_t words64[8];
+} DigestWords;
+
 typedef struct {
   Hash inner;
   Hash outer;
   Hash salted;
   Hash work;
+  union {
+    uint32_t words32[16];
+    uint64_t words64[16];
+  } message;
+  DigestWords chain;
+  DigestWords accumulator;
   uint8_t key[128];
   uint8_t previous[64];
   uint32_t algorithm;
@@ -92,6 +103,100 @@ static uint32_t hmac_finalize(void) {
   }
 
   return hash_finalize(&state.work, state.previous);
+}
+
+static void iterate32(
+  uint64_t rounds, unsigned int words, void (*compress)(uint32_t *, const uint32_t *)
+) {
+  uint32_t *message = state.message.words32;
+  uint32_t *chain = state.chain.words32;
+  uint32_t *accumulator = state.accumulator.words32;
+  const uint32_t *inner = state.inner.sha256.words;
+  const uint32_t *outer = state.outer.sha256.words;
+
+  for (unsigned int i = 0; i < 16; i++) {
+    message[i] = 0;
+  }
+
+  message[words] = 0x80000000u;
+  message[15] = (64u + words * 4u) * 8u;
+
+  for (unsigned int i = 0; i < words; i++) {
+    accumulator[i] = wasm_load32_be(state.previous + i * 4);
+    message[i] = accumulator[i];
+  }
+
+  for (uint64_t round = 1; round < rounds; round++) {
+    for (unsigned int i = 0; i < 8; i++) {
+      chain[i] = inner[i];
+    }
+
+    compress(chain, message);
+
+    for (unsigned int i = 0; i < words; i++) {
+      message[i] = chain[i];
+      chain[i] = outer[i];
+    }
+
+    for (unsigned int i = words; i < 8; i++) {
+      chain[i] = outer[i];
+    }
+
+    compress(chain, message);
+
+    for (unsigned int i = 0; i < words; i++) {
+      message[i] = chain[i];
+      accumulator[i] ^= chain[i];
+    }
+  }
+
+  for (unsigned int i = 0; i < words; i++) {
+    wasm_store32_be(output + i * 4, accumulator[i]);
+  }
+}
+
+static void iterate64(uint64_t rounds) {
+  uint64_t *message = state.message.words64;
+  uint64_t *chain = state.chain.words64;
+  uint64_t *accumulator = state.accumulator.words64;
+  const uint64_t *inner = state.inner.sha512.words;
+  const uint64_t *outer = state.outer.sha512.words;
+
+  for (unsigned int i = 8; i < 16; i++) {
+    message[i] = 0;
+  }
+
+  message[8] = 0x80ull << 56;
+  message[15] = (128u + 64u) * 8u;
+
+  for (unsigned int i = 0; i < 8; i++) {
+    accumulator[i] = wasm_load64_be(state.previous + i * 8);
+    message[i] = accumulator[i];
+  }
+
+  for (uint64_t round = 1; round < rounds; round++) {
+    for (unsigned int i = 0; i < 8; i++) {
+      chain[i] = inner[i];
+    }
+
+    sha512_compress(chain, message);
+
+    for (unsigned int i = 0; i < 8; i++) {
+      message[i] = chain[i];
+      chain[i] = outer[i];
+    }
+
+    sha512_compress(chain, message);
+
+    for (unsigned int i = 0; i < 8; i++) {
+      message[i] = chain[i];
+      accumulator[i] ^= chain[i];
+    }
+  }
+
+  for (unsigned int i = 0; i < 8; i++) {
+    wasm_store64_be(output + i * 8, accumulator[i]);
+  }
 }
 
 WASM_EXPORT("input_ptr") uint8_t *input_ptr(void) {
@@ -232,30 +337,22 @@ WASM_EXPORT("derive") uint32_t derive(uint32_t index, uint32_t iterations_low, u
     return status;
   }
 
-  for (uint32_t i = 0; i < state.digest_size; i++) {
-    output[i] = state.previous[i];
-  }
-
-  for (uint64_t round = 1; round < iterations; round++) {
-    hash_copy(&state.work, &state.inner);
-    status = hash_update(&state.work, state.previous, state.digest_size);
-
-    if (status != 0) {
-      return status;
-    }
-
-    status = hmac_finalize();
-
-    if (status != 0) {
-      return status;
-    }
-
-    for (uint32_t i = 0; i < state.digest_size; i++) {
-      output[i] ^= state.previous[i];
-    }
+  switch (state.algorithm) {
+    case 1:
+      iterate32(iterations, 5, sha1_compress);
+      break;
+    case 256:
+      iterate32(iterations, 8, sha256_compress);
+      break;
+    default:
+      iterate64(iterations);
+      break;
   }
 
   wasm_clear(&state.work, sizeof(state.work));
   wasm_clear(state.previous, sizeof(state.previous));
+  wasm_clear(&state.message, sizeof(state.message));
+  wasm_clear(&state.chain, sizeof(state.chain));
+  wasm_clear(&state.accumulator, sizeof(state.accumulator));
   return 0;
 }
