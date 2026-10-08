@@ -1,7 +1,6 @@
 import { assertLength, toBytes } from './bytes.js'
 import { InvalidInputError, UnsupportedError } from './errors.js'
-import { sha1Sync } from './hash/sha1.js'
-import { createSyncHmac, hmacSha256Sync, hmacSha512Sync, macAsync } from './hmac.js'
+import { hmacSha1Sync, hmacSha256Sync, hmacSha512Sync, macAsync } from './hmac.js'
 import type { SyncHmac } from './hmac.js'
 import { nativeHkdf, nativePbkdf2 } from './native/web.js'
 import type { Data } from './types.js'
@@ -28,8 +27,6 @@ export interface KDF {
   hkdf(input: Data, options: HkdfOptions): Promise<Uint8Array>
 }
 
-const hmacSha1 = /* @__PURE__ */ createSyncHmac('sha1', sha1Sync, 64)
-
 function resolveHash(name: HashName | undefined): {
   name: HashName
   size: number
@@ -46,7 +43,7 @@ function resolveHash(name: HashName | undefined): {
     }
 
     case 'sha1': {
-      return { name: 'sha1', size: 20, mac: hmacSha1 }
+      return { name: 'sha1', size: 20, mac: hmacSha1Sync }
     }
 
     default: {
