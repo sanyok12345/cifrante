@@ -33,6 +33,8 @@ function hashName(name: string): string | undefined {
       return 'SHA-1'
     case 'sha256':
       return 'SHA-256'
+    case 'sha384':
+      return 'SHA-384'
     case 'sha512':
       return 'SHA-512'
     default:

@@ -1,5 +1,5 @@
 import { BlockHash, createHash, createSyncHash } from './hash.js'
-import { createSha512Wasm } from '../wasm/sha512.js'
+import { createSha384Wasm, createSha512Wasm } from '../wasm/sha512.js'
 
 const K = /* @__PURE__ */ new Uint32Array([
   0x428a2f98, 0xd728ae22, 0x71374491, 0x23ef65cd,
@@ -179,3 +179,23 @@ export const sha512Sync = /* @__PURE__ */ createSyncHash(
   createSha512Wasm,
 )
 export const sha512 = /* @__PURE__ */ createHash('sha512', sha512Sync)
+
+class Sha384 extends Sha512 {
+  protected readonly state = new Uint32Array([
+    0xcbbb9d5d, 0xc1059ed8, 0x629a292a, 0x367cd507,
+    0x9159015a, 0x3070dd17, 0x152fecd8, 0xf70e5939,
+    0x67332667, 0xffc00b31, 0x8eb44a87, 0x68581511,
+    0xdb0c2e0d, 0x64f98fa7, 0x47b5481d, 0xbefa4fa4,
+  ])
+
+  protected output(): Uint8Array {
+    return super.output().subarray(0, 48)
+  }
+}
+
+export const sha384Sync = /* @__PURE__ */ createSyncHash(
+  'sha384',
+  () => new Sha384(),
+  createSha384Wasm,
+)
+export const sha384 = /* @__PURE__ */ createHash('sha384', sha384Sync)

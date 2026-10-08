@@ -12,6 +12,13 @@ const uint64_t sha512_initial[8] = {
   0x1f83d9abfb41bd6bull, 0x5be0cd19137e2179ull,
 };
 
+const uint64_t sha384_initial[8] = {
+  0xcbbb9d5dc1059ed8ull, 0x629a292a367cd507ull,
+  0x9159015a3070dd17ull, 0x152fecd8f70e5939ull,
+  0x67332667ffc00b31ull, 0x8eb44a8768581511ull,
+  0xdb0c2e0d64f98fa7ull, 0x47b5481dbefa4fa4ull,
+};
+
 static const uint64_t K[80] = {
   0x428a2f98d728ae22ull, 0x7137449123ef65cdull,
   0xb5c0fbcfec4d3b2full, 0xe9b5dba58189dbbcull,
@@ -149,12 +156,20 @@ static void compress(void *context, const uint8_t *block) {
   wasm_clear(message, sizeof(message));
 }
 
-void sha512_init(Sha512 *state) {
+static void initialize(Sha512 *state, const uint64_t *initial) {
   wasm_clear(state, sizeof(*state));
 
   for (unsigned int i = 0; i < 8; i++) {
-    state->words[i] = sha512_initial[i];
+    state->words[i] = initial[i];
   }
+}
+
+void sha512_init(Sha512 *state) {
+  initialize(state, sha512_initial);
+}
+
+void sha384_init(Sha512 *state) {
+  initialize(state, sha384_initial);
 }
 
 uint32_t sha512_update(Sha512 *state, const uint8_t *input, size_t length) {

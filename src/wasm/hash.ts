@@ -11,6 +11,7 @@ type HashExports = WebAssembly.Exports & {
   input_capacity(): number
   output_ptr(): number
   init(): void
+  init_384?(): void
   update(length: number): number
   finalize(): number
 }
@@ -18,6 +19,7 @@ type HashExports = WebAssembly.Exports & {
 type Context = {
   engine: HashExports
   name: string
+  initialize: () => void
   outputLength: number
   memory: Uint8Array
   stateView: Uint8Array
@@ -43,8 +45,8 @@ class WasmHash implements DigestState {
   private readonly state: Uint8Array
 
   constructor(private readonly context: Context) {
-    const { engine, stateView } = context
-    engine.init()
+    const { initialize, stateView } = context
+    initialize()
     this.state = stateView.slice()
     stateView.fill(0)
   }
@@ -82,9 +84,9 @@ class WasmHash implements DigestState {
   digest(): Uint8Array {
     try {
       return this.use(() => {
-        const { engine, name, outputView } = this.context
+        const { engine, name, outputView, outputLength } = this.context
         check(engine.finalize(), name)
-        return outputView.slice()
+        return outputView.slice(0, outputLength)
       })
     } finally {
       this.state.fill(0)
@@ -96,16 +98,22 @@ export type WasmHashFactory = (() => DigestState | undefined) & {
   once(data: Uint8Array): Uint8Array | undefined
 }
 
+export function hashModule(source: string): () => HashExports | undefined {
+  return wasm<HashExports>(source)
+}
+
 export function wasmHash(
-  source: string,
+  load: () => HashExports | undefined,
   name: string,
   outputLength: number,
+  outputSize = outputLength,
+  variant: 'init' | 'init_384' = 'init',
 ): WasmHashFactory {
-  const load = wasm<HashExports>(source)
   const prepare = lazy((): Context | undefined => {
     const engine = load()
+    const initialize = engine?.[variant]
 
-    if (!engine) {
+    if (!engine || !initialize) {
       return undefined
     }
 
@@ -117,10 +125,11 @@ export function wasmHash(
     return {
       engine,
       name,
+      initialize,
       outputLength,
       memory,
       stateView: memory.subarray(stateOffset, stateOffset + stateSize),
-      outputView: memory.subarray(outputOffset, outputOffset + outputLength),
+      outputView: memory.subarray(outputOffset, outputOffset + outputSize),
       stateOffset,
       stateSize,
       inputOffset: engine.input_ptr(),
@@ -136,8 +145,8 @@ export function wasmHash(
       return undefined
     }
 
-    const { engine, memory, stateView, outputView, inputOffset, inputCapacity } = context
-    engine.init()
+    const { engine, initialize, memory, stateView, outputView, inputOffset, inputCapacity } = context
+    initialize()
 
     try {
       for (let offset = 0; offset < data.length; offset += inputCapacity) {
@@ -147,7 +156,7 @@ export function wasmHash(
       }
 
       check(engine.finalize(), name)
-      return outputView.slice()
+      return outputView.slice(0, outputLength)
     } finally {
       stateView.fill(0)
       memory.fill(0, inputOffset, inputOffset + Math.min(data.length, inputCapacity))

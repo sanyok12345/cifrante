@@ -3,7 +3,7 @@ import { bytes } from './bytes.js'
 import { md5 } from './hash/md5.js'
 import { sha1 } from './hash/sha1.js'
 import { sha256 } from './hash/sha256.js'
-import { sha512 } from './hash/sha512.js'
+import { sha384, sha512 } from './hash/sha512.js'
 import { aes } from './aes/aes.js'
 import { hmac } from './hmac.js'
 import { kdf } from './kdf.js'
@@ -19,7 +19,7 @@ import {
   AuthenticationError,
 } from './errors.js'
 
-export { random, bytes, md5, sha1, sha256, sha512, aes, hmac, kdf, math, rsa }
+export { random, bytes, md5, sha1, sha256, sha384, sha512, aes, hmac, kdf, math, rsa }
 
 export {
   CifranteError,
@@ -48,6 +48,7 @@ export default {
   md5,
   sha1,
   sha256,
+  sha384,
   sha512,
   aes,
   hmac,

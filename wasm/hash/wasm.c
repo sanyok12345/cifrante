@@ -62,6 +62,14 @@ void init(void) {
   wasm_clear(output, sizeof(output));
 }
 
+#if defined(HASH_SHA512)
+WASM_EXPORT("init_384")
+void init_384(void) {
+  sha384_init(&state);
+  wasm_clear(output, sizeof(output));
+}
+#endif
+
 WASM_EXPORT("update")
 uint32_t update(uint32_t length) {
   if (length > WASM_INPUT_CAPACITY) {

@@ -34,6 +34,7 @@ void sha512_compress(uint64_t *state, const uint64_t *message);
 extern const uint32_t sha1_initial[5];
 extern const uint32_t sha256_initial[8];
 extern const uint64_t sha512_initial[8];
+extern const uint64_t sha384_initial[8];
 
 void sha1_init(Sha1 *state);
 uint32_t sha1_update(Sha1 *state, const uint8_t *input, size_t length);
@@ -44,6 +45,7 @@ uint32_t sha256_update(Sha256 *state, const uint8_t *input, size_t length);
 uint32_t sha256_finalize(Sha256 *state, uint8_t *output);
 
 void sha512_init(Sha512 *state);
+void sha384_init(Sha512 *state);
 uint32_t sha512_update(Sha512 *state, const uint8_t *input, size_t length);
 uint32_t sha512_finalize(Sha512 *state, uint8_t *output);
 
