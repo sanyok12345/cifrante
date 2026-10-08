@@ -326,6 +326,34 @@ export function nativeCipher(mode: 'cbc' | 'ctr', secret: Uint8Array): NativeCip
 
       return output === undefined ? undefined : new Uint8Array(output, 0, data.length)
     },
+
+    async decryptBlocks(iv, data) {
+      if (mode !== 'cbc' || data.length === 0 || data.length % 16 !== 0) {
+        return undefined
+      }
+
+      const context = await prepare()
+
+      if (!context) {
+        return undefined
+      }
+
+      const { subtle, key } = context
+      const last = data.subarray(data.length - 16)
+      const padding = await supported(subtle, `${name}:encrypt:${secret.length}`, () =>
+        subtle.encrypt({ name, iv: source(last) }, key, new Uint8Array(0)),
+      )
+
+      if (padding === undefined) {
+        return undefined
+      }
+
+      const sealed = new Uint8Array(data.length + 16)
+      sealed.set(data)
+      sealed.set(new Uint8Array(padding), data.length)
+
+      return decrypt(context, parameters(iv), sealed, `${name}:decrypt:${secret.length}`)
+    },
   }
 }
 

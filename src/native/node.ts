@@ -283,18 +283,20 @@ export function nativeCipher(
     }
   }
 
-  function blocks(iv: Uint8Array, data: Uint8Array): Uint8Array | undefined {
+  function blocks(iv: Uint8Array, data: Uint8Array, decrypt: boolean): Uint8Array | undefined {
     if (mode !== 'cbc' || !supportsCipher(name)) {
       return undefined
     }
 
-    const cipher = createCipheriv(name, key, iv)
+    const cipher = decrypt ? createDecipheriv(name, key, iv) : createCipheriv(name, key, iv)
     cipher.setAutoPadding(false)
 
     const head = cipher.update(data)
     const tail = cipher.final()
 
-    return tail.length === 0 ? head : concat(head, tail)
+    return tail.length === 0
+      ? new Uint8Array(head.buffer, head.byteOffset, head.byteLength)
+      : concat(head, tail)
   }
 
   function stream(iv: Uint8Array): NativeStream | undefined {
@@ -323,8 +325,10 @@ export function nativeCipher(
     decrypt: async (iv, data) => operate(iv, data, true),
     encryptSync: (iv, data) => operate(iv, data, false),
     decryptSync: (iv, data) => operate(iv, data, true),
-    encryptBlocks: async (iv, data) => blocks(iv, data),
-    encryptBlocksSync: blocks,
+    encryptBlocks: async (iv, data) => blocks(iv, data, false),
+    decryptBlocks: async (iv, data) => blocks(iv, data, true),
+    encryptBlocksSync: (iv, data) => blocks(iv, data, false),
+    decryptBlocksSync: (iv, data) => blocks(iv, data, true),
   }
 }
 
