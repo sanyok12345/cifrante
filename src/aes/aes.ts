@@ -1,5 +1,6 @@
 import type { Binary, Data } from '../types.js'
 import { cbc } from './cbc.js'
+import type { CbcOptions } from './cbc.js'
 import { ctr } from './ctr.js'
 import { gcm } from './gcm.js'
 import type { AeadCipher, GcmOptions } from './gcm.js'
@@ -28,7 +29,7 @@ export interface CtrCipher extends Cipher {
 export interface AES {
   ige(key: Binary): Cipher
   ctr(key: Binary): CtrCipher
-  cbc(key: Binary): Cipher
+  cbc(key: Binary, options?: CbcOptions): Cipher
   gcm(key: Binary, options?: GcmOptions): AeadCipher
 }
 
