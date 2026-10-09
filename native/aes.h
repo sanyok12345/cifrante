@@ -17,26 +17,31 @@
 #error "Hardware AES requires x86-64 or AArch64"
 #endif
 
-typedef struct {
+typedef struct
+{
   Block keys[15];
   unsigned int rounds;
 } Aes;
 
-static inline void aes_clear(void *memory, size_t length) {
+static inline void aes_clear(void *memory, size_t length)
+{
   volatile uint8_t *bytes = (volatile uint8_t *)memory;
 
-  for (size_t i = 0; i < length; i++) {
+  for (size_t i = 0; i < length; i++)
+  {
     bytes[i] = 0;
   }
 }
 
-static inline uint32_t aes_word(const uint8_t *bytes) {
-  return (uint32_t)bytes[0] | (uint32_t)bytes[1] << 8
-    | (uint32_t)bytes[2] << 16 | (uint32_t)bytes[3] << 24;
+static inline uint32_t aes_word(const uint8_t *bytes)
+{
+  return (uint32_t)bytes[0] | (uint32_t)bytes[1] << 8 | (uint32_t)bytes[2] << 16 | (uint32_t)bytes[3] << 24;
 }
 
-static inline int aes_expand(Aes *aes, const uint8_t *key, size_t length, int decrypting) {
-  if (length != 16 && length != 24 && length != 32) {
+static inline int aes_expand(Aes *aes, const uint8_t *key, size_t length, int decrypting)
+{
+  if (length != 16 && length != 24 && length != 32)
+  {
     return 1;
   }
 
@@ -46,17 +51,22 @@ static inline int aes_expand(Aes *aes, const uint8_t *key, size_t length, int de
   uint32_t words[60];
   uint32_t rcon = 1;
 
-  for (unsigned int i = 0; i < count; i++) {
+  for (unsigned int i = 0; i < count; i++)
+  {
     words[i] = aes_word(key + i * 4);
   }
 
-  for (unsigned int i = count; i < total; i++) {
+  for (unsigned int i = count; i < total; i++)
+  {
     uint32_t t = words[i - 1];
 
-    if (i % count == 0) {
+    if (i % count == 0)
+    {
       t = aes_subword((t >> 8) | (t << 24)) ^ rcon;
       rcon = (rcon << 1) ^ ((rcon >> 7) * 0x11bu);
-    } else if (count == 8 && i % count == 4) {
+    }
+    else if (count == 8 && i % count == 4)
+    {
       t = aes_subword(t);
     }
 
@@ -65,14 +75,17 @@ static inline int aes_expand(Aes *aes, const uint8_t *key, size_t length, int de
 
   aes->rounds = rounds;
 
-  for (unsigned int round = 0; round <= rounds; round++) {
+  for (unsigned int round = 0; round <= rounds; round++)
+  {
     unsigned int source = decrypting ? rounds - round : round;
 
     aes->keys[round] = block_load((const uint8_t *)&words[4 * source]);
   }
 
-  if (decrypting) {
-    for (unsigned int round = 1; round < rounds; round++) {
+  if (decrypting)
+  {
+    for (unsigned int round = 1; round < rounds; round++)
+    {
       aes->keys[round] = aes_inverse_key(aes->keys[round]);
     }
   }
@@ -81,20 +94,47 @@ static inline int aes_expand(Aes *aes, const uint8_t *key, size_t length, int de
   return 0;
 }
 
-static inline Block aes_encrypt_block(const Aes *aes, Block state) {
+static inline Block aes_encrypt_block(const Aes *aes, Block state)
+{
   state = aes_encrypt_first(state, aes->keys[0]);
 
-  for (unsigned int round = 1; round < aes->rounds - 1; round++) {
+  for (unsigned int round = 1; round < aes->rounds - 1; round++)
+  {
     state = aes_encrypt_round(state, aes->keys[round]);
   }
 
   return aes_encrypt_last(state, aes->keys[aes->rounds - 1], aes->keys[aes->rounds]);
 }
 
-static inline Block aes_decrypt_block(const Aes *aes, Block state) {
+#define AES_BATCH 8
+
+static inline void aes_encrypt_batch(const Aes *aes, Block *states)
+{
+  for (unsigned int i = 0; i < AES_BATCH; i++)
+  {
+    states[i] = aes_encrypt_first(states[i], aes->keys[0]);
+  }
+
+  for (unsigned int round = 1; round < aes->rounds - 1; round++)
+  {
+    for (unsigned int i = 0; i < AES_BATCH; i++)
+    {
+      states[i] = aes_encrypt_round(states[i], aes->keys[round]);
+    }
+  }
+
+  for (unsigned int i = 0; i < AES_BATCH; i++)
+  {
+    states[i] = aes_encrypt_last(states[i], aes->keys[aes->rounds - 1], aes->keys[aes->rounds]);
+  }
+}
+
+static inline Block aes_decrypt_block(const Aes *aes, Block state)
+{
   state = aes_decrypt_first(state, aes->keys[0]);
 
-  for (unsigned int round = 1; round < aes->rounds - 1; round++) {
+  for (unsigned int round = 1; round < aes->rounds - 1; round++)
+  {
     state = aes_decrypt_round(state, aes->keys[round]);
   }
 

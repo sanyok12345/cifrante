@@ -4,8 +4,8 @@ VERSION = $(shell node -p "require('../package.json').version")
 HOST = $(shell node -p "process.platform + '-' + process.arch + (process.platform === 'linux' ? (process.report.getReport().header.glibcVersionRuntime ? '-gnu' : '-musl') : '')")
 OUT_DIR = ../build/native
 CFLAGS = -std=c11 -O2 -s -fPIC -fvisibility=hidden -Wall -Wextra -Werror -I$(NODE_INCLUDE)
-SOURCES = ige.c node.c
-HEADERS = aes.h aes_x86.h aes_arm.h ige.h
+SOURCES = ige.c ctr.c node.c
+HEADERS = aes.h aes_x86.h aes_arm.h modes.h
 TARGETS = darwin-arm64 darwin-x64 linux-x64-gnu linux-x64-musl linux-arm64-gnu linux-arm64-musl win32-x64 win32-arm64
 MODULES = $(foreach target,$(TARGETS),$(OUT_DIR)/$(target)/cifrante.node)
 PACKAGES = $(foreach target,$(TARGETS),$(OUT_DIR)/$(target)/package.json)
