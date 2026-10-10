@@ -53,8 +53,8 @@ export function toBytes(data: Data): Uint8Array<ArrayBuffer> {
 export function toBinaryView(data: Binary): Uint8Array {
   try {
     if (ArrayBuffer.isView(data)) {
-      return data instanceof Uint8Array && data.byteLength > 0
-        ? data
+      return data.constructor === Uint8Array && data.byteLength > 0
+        ? data as Uint8Array
         : new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
     }
 
