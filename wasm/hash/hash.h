@@ -8,7 +8,8 @@
 
 #include "../wasm.h"
 
-typedef struct {
+typedef struct
+{
   uint32_t words[8];
   uint64_t length;
   uint8_t block[64];
@@ -18,7 +19,8 @@ typedef struct {
 
 typedef Sha256 Sha1;
 
-typedef struct {
+typedef struct
+{
   uint64_t words[8];
   uint64_t length_low;
   uint64_t length_high;

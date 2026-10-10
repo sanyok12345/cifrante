@@ -14,7 +14,8 @@ typedef v128_t GhashKey[4];
 typedef uint64_t GhashKey[4];
 #endif
 
-typedef struct {
+typedef struct
+{
   GhashKey key[9];
   uint32_t prepared;
   uint32_t reserved;
@@ -32,7 +33,8 @@ typedef struct {
   uint32_t stage;
 } Gcm;
 
-typedef struct {
+typedef struct
+{
   Aes aes;
   uint8_t iv[32];
   uint8_t stream[16];
@@ -47,11 +49,10 @@ extern uint8_t input[WASM_INPUT_CAPACITY];
 uint32_t aes_ready(uint32_t length, uint32_t alignment);
 void aes_increment(uint8_t *counter, unsigned first);
 void aes_stream(
-  uint8_t *counter,
-  uint8_t *stream,
-  uint32_t *used,
-  uint32_t length,
-  unsigned first
-);
+    uint8_t *counter,
+    uint8_t *stream,
+    uint32_t *used,
+    uint32_t length,
+    unsigned first);
 
 #endif

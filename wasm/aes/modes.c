@@ -34,7 +34,8 @@ WASM_EXPORT("input_capacity")
 uint32_t input_capacity(void) { return sizeof(input); }
 
 WASM_EXPORT("init")
-uint32_t init(uint32_t key_length) {
+uint32_t init(uint32_t key_length)
+{
   wasm_clear(&state, sizeof(state));
   uint32_t status = aes_init(&state.aes, key, key_length);
   state.used = 16;
@@ -42,22 +43,27 @@ uint32_t init(uint32_t key_length) {
   return status;
 }
 
-uint32_t aes_ready(uint32_t length, uint32_t alignment) {
-  if (length > sizeof(input) || length % alignment != 0) {
+uint32_t aes_ready(uint32_t length, uint32_t alignment)
+{
+  if (length > sizeof(input) || length % alignment != 0)
+  {
     return 2;
   }
 
-  if (state.aes.rounds != 10 && state.aes.rounds != 12 && state.aes.rounds != 14) {
+  if (state.aes.rounds != 10 && state.aes.rounds != 12 && state.aes.rounds != 14)
+  {
     return 3;
   }
 
   return 0;
 }
 
-void aes_increment(uint8_t *counter, unsigned first) {
+void aes_increment(uint8_t *counter, unsigned first)
+{
   uint32_t carry = 1;
 
-  for (unsigned i = 16; i > first; i--) {
+  for (unsigned i = 16; i > first; i--)
+  {
     carry += counter[i - 1];
     counter[i - 1] = (uint8_t)carry;
     carry >>= 8;
@@ -65,17 +71,20 @@ void aes_increment(uint8_t *counter, unsigned first) {
 }
 
 void aes_stream(
-  uint8_t *counter,
-  uint8_t *stream,
-  uint32_t *used,
-  uint32_t length,
-  unsigned first
-) {
+    uint8_t *counter,
+    uint8_t *stream,
+    uint32_t *used,
+    uint32_t length,
+    unsigned first)
+{
   uint32_t offset = 0;
 
-  while (*used == 16 && length - offset >= sizeof(state.scratch)) {
-    for (unsigned block = 0; block < sizeof(state.scratch) / 16; block++) {
-      for (unsigned i = 0; i < 16; i++) {
+  while (*used == 16 && length - offset >= sizeof(state.scratch))
+  {
+    for (unsigned block = 0; block < sizeof(state.scratch) / 16; block++)
+    {
+      for (unsigned i = 0; i < 16; i++)
+      {
         state.scratch[block * 16 + i] = counter[i];
       }
 
@@ -84,16 +93,20 @@ void aes_stream(
 
     aes_encrypt_blocks(&state.aes, state.scratch, sizeof(state.scratch) / 16);
 
-    for (unsigned i = 0; i < sizeof(state.scratch); i += 8) {
+    for (unsigned i = 0; i < sizeof(state.scratch); i += 8)
+    {
       *(wasm_u64 *)(input + offset + i) ^= *(const wasm_u64 *)(state.scratch + i);
     }
 
     offset += sizeof(state.scratch);
   }
 
-  while (offset < length) {
-    if (*used == 16) {
-      for (unsigned i = 0; i < 16; i++) {
+  while (offset < length)
+  {
+    if (*used == 16)
+    {
+      for (unsigned i = 0; i < 16; i++)
+      {
         stream[i] = counter[i];
       }
 
@@ -104,11 +117,13 @@ void aes_stream(
 
     uint32_t count = 16 - *used;
 
-    if (count > length - offset) {
+    if (count > length - offset)
+    {
       count = length - offset;
     }
 
-    for (uint32_t i = 0; i < count; i++) {
+    for (uint32_t i = 0; i < count; i++)
+    {
       input[offset + i] ^= stream[*used + i];
     }
 

@@ -11,13 +11,15 @@
 #if defined(AES_SIMD)
 #include <wasm_simd128.h>
 
-typedef struct {
+typedef struct
+{
   uint32_t rounds;
   v128_t encrypt[15];
   v128_t decrypt[15];
 } Aes;
 #else
-typedef struct {
+typedef struct
+{
   uint32_t rounds;
   uint32_t keys[15][8];
 } Aes;

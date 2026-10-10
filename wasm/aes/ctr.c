@@ -6,10 +6,12 @@
 #include "modes.h"
 
 WASM_EXPORT("ctr_transform")
-uint32_t ctr_transform(uint32_t length) {
+uint32_t ctr_transform(uint32_t length)
+{
   uint32_t status = aes_ready(length, 1);
 
-  if (status != 0) {
+  if (status != 0)
+  {
     return status;
   }
 

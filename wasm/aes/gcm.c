@@ -5,22 +5,26 @@
 
 #include "modes.h"
 
-static void store64(uint8_t *bytes, uint64_t value) {
+static void store64(uint8_t *bytes, uint64_t value)
+{
   wasm_store64_be(bytes, value);
 }
 
-static uint64_t reverse_bits(uint64_t x) {
+static uint64_t reverse_bits(uint64_t x)
+{
   x = ((x >> 1) & 0x5555555555555555ull) | ((x & 0x5555555555555555ull) << 1);
   x = ((x >> 2) & 0x3333333333333333ull) | ((x & 0x3333333333333333ull) << 2);
   x = ((x >> 4) & 0x0f0f0f0f0f0f0f0full) | ((x & 0x0f0f0f0f0f0f0f0full) << 4);
   return x;
 }
 
-static uint64_t load_polynomial(const uint8_t *bytes) {
+static uint64_t load_polynomial(const uint8_t *bytes)
+{
   return reverse_bits(*(const wasm_u64 *)bytes);
 }
 
-static void store_polynomial(uint8_t *bytes, uint64_t value) {
+static void store_polynomial(uint8_t *bytes, uint64_t value)
+{
   *(wasm_u64 *)bytes = reverse_bits(value);
 }
 
@@ -31,25 +35,22 @@ static void store_polynomial(uint8_t *bytes, uint64_t value) {
 
 #if defined(AES_SIMD)
 
-static inline uint64_t clmul32(uint32_t x, const v128_t *y) {
+static inline uint64_t clmul32(uint32_t x, const v128_t *y)
+{
   v128_t masks = wasm_u32x4_const(0x11111111u, 0x22222222u, 0x44444444u, 0x88888888u);
   v128_t parts = wasm_v128_and(wasm_u32x4_splat(x), masks);
   v128_t even = wasm_v128_xor(
-    wasm_u64x2_extmul_low_u32x4(parts, y[0]),
-    wasm_u64x2_extmul_high_u32x4(parts, y[0])
-  );
+      wasm_u64x2_extmul_low_u32x4(parts, y[0]),
+      wasm_u64x2_extmul_high_u32x4(parts, y[0]));
   v128_t even2 = wasm_v128_xor(
-    wasm_u64x2_extmul_low_u32x4(parts, y[2]),
-    wasm_u64x2_extmul_high_u32x4(parts, y[2])
-  );
+      wasm_u64x2_extmul_low_u32x4(parts, y[2]),
+      wasm_u64x2_extmul_high_u32x4(parts, y[2]));
   v128_t odd = wasm_v128_xor(
-    wasm_u64x2_extmul_low_u32x4(parts, y[1]),
-    wasm_u64x2_extmul_high_u32x4(parts, y[1])
-  );
+      wasm_u64x2_extmul_low_u32x4(parts, y[1]),
+      wasm_u64x2_extmul_high_u32x4(parts, y[1]));
   v128_t odd3 = wasm_v128_xor(
-    wasm_u64x2_extmul_low_u32x4(parts, y[3]),
-    wasm_u64x2_extmul_high_u32x4(parts, y[3])
-  );
+      wasm_u64x2_extmul_low_u32x4(parts, y[3]),
+      wasm_u64x2_extmul_high_u32x4(parts, y[3]));
 
   even = wasm_v128_xor(even, wasm_i64x2_shuffle(even2, even2, 1, 0));
   odd = wasm_v128_xor(odd, wasm_i64x2_shuffle(odd3, odd3, 1, 0));
@@ -61,7 +62,8 @@ static inline uint64_t clmul32(uint32_t x, const v128_t *y) {
   return wasm_u64x2_extract_lane(result, 0) | wasm_u64x2_extract_lane(result, 1);
 }
 
-static void split_key(v128_t *parts, uint32_t y) {
+static void split_key(v128_t *parts, uint32_t y)
+{
   uint32_t y0 = y & 0x11111111u;
   uint32_t y1 = y & 0x22222222u;
   uint32_t y2 = y & 0x44444444u;
@@ -75,7 +77,8 @@ static void split_key(v128_t *parts, uint32_t y) {
 
 #else
 
-static inline uint64_t clmul32(uint64_t x, const uint64_t *y) {
+static inline uint64_t clmul32(uint64_t x, const uint64_t *y)
+{
   uint64_t x0 = x & GHASH_MASK0;
   uint64_t x1 = x & GHASH_MASK1;
   uint64_t x2 = x & GHASH_MASK2;
@@ -88,7 +91,8 @@ static inline uint64_t clmul32(uint64_t x, const uint64_t *y) {
   return (z0 & GHASH_MASK0) | (z1 & GHASH_MASK1) | (z2 & GHASH_MASK2) | (z3 & GHASH_MASK3);
 }
 
-static void split_key(uint64_t *parts, uint64_t y) {
+static void split_key(uint64_t *parts, uint64_t y)
+{
   parts[0] = y & GHASH_MASK0;
   parts[1] = y & GHASH_MASK1;
   parts[2] = y & GHASH_MASK2;
@@ -97,10 +101,12 @@ static void split_key(uint64_t *parts, uint64_t y) {
 
 #endif
 
-static void prepare_key(uint64_t h0, uint64_t h1) {
+static void prepare_key(uint64_t h0, uint64_t h1)
+{
   uint64_t operands[3] = {h0, h1, h0 ^ h1};
 
-  for (unsigned i = 0; i < 3; i++) {
+  for (unsigned i = 0; i < 3; i++)
+  {
     uint32_t low = (uint32_t)operands[i];
     uint32_t high = (uint32_t)(operands[i] >> 32);
 
@@ -110,7 +116,8 @@ static void prepare_key(uint64_t h0, uint64_t h1) {
   }
 }
 
-static inline void clmul64(uint64_t x, const GhashKey *y, uint64_t *high, uint64_t *low) {
+static inline void clmul64(uint64_t x, const GhashKey *y, uint64_t *high, uint64_t *low)
+{
   uint32_t xl = (uint32_t)x;
   uint32_t xh = (uint32_t)(x >> 32);
   uint64_t a = clmul32(xl, y[0]);
@@ -122,10 +129,12 @@ static inline void clmul64(uint64_t x, const GhashKey *y, uint64_t *high, uint64
 }
 
 WASM_EXPORT("gcm_prepare")
-uint32_t gcm_prepare(void) {
+uint32_t gcm_prepare(void)
+{
   uint32_t status = aes_ready(0, 1);
 
-  if (status != 0) {
+  if (status != 0)
+  {
     return status;
   }
 
@@ -138,11 +147,13 @@ uint32_t gcm_prepare(void) {
   return 0;
 }
 
-static void reset(Gcm *gcm) {
+static void reset(Gcm *gcm)
+{
   wasm_clear((uint8_t *)gcm + offsetof(Gcm, hash), sizeof(*gcm) - offsetof(Gcm, hash));
 }
 
-static void multiply(const uint8_t *block) {
+static void multiply(const uint8_t *block)
+{
   Gcm *gcm = &state.gcm;
   uint64_t x0 = gcm->hash[0] ^ load_polynomial(block);
   uint64_t x1 = gcm->hash[1] ^ load_polynomial(block + 8);
@@ -159,8 +170,7 @@ static void multiply(const uint8_t *block) {
   uint64_t p2 = h0 ^ m1;
   uint64_t p3 = h1;
 
-  uint64_t t3 = p3 ^ (p3 << 1) ^ (p3 << 2) ^ (p3 << 7)
-    ^ (p2 >> 63) ^ (p2 >> 62) ^ (p2 >> 57);
+  uint64_t t3 = p3 ^ (p3 << 1) ^ (p3 << 2) ^ (p3 << 7) ^ (p2 >> 63) ^ (p2 >> 62) ^ (p2 >> 57);
   uint64_t t2 = p2 ^ (p2 << 1) ^ (p2 << 2) ^ (p2 << 7);
   uint64_t overflow = (p3 >> 63) ^ (p3 >> 62) ^ (p3 >> 57);
 
@@ -168,12 +178,15 @@ static void multiply(const uint8_t *block) {
   gcm->hash[0] = p0 ^ t2 ^ overflow ^ (overflow << 1) ^ (overflow << 2) ^ (overflow << 7);
 }
 
-static void hash_update(uint32_t length) {
+static void hash_update(uint32_t length)
+{
   Gcm *gcm = &state.gcm;
   uint32_t offset = 0;
 
-  while (offset < length) {
-    if (gcm->buffered == 0 && length - offset >= 16) {
+  while (offset < length)
+  {
+    if (gcm->buffered == 0 && length - offset >= 16)
+    {
       multiply(input + offset);
       offset += 16;
       continue;
@@ -181,18 +194,21 @@ static void hash_update(uint32_t length) {
 
     uint32_t count = 16 - gcm->buffered;
 
-    if (count > length - offset) {
+    if (count > length - offset)
+    {
       count = length - offset;
     }
 
-    for (uint32_t i = 0; i < count; i++) {
+    for (uint32_t i = 0; i < count; i++)
+    {
       gcm->buffer[gcm->buffered + i] = input[offset + i];
     }
 
     gcm->buffered += count;
     offset += count;
 
-    if (gcm->buffered == 16) {
+    if (gcm->buffered == 16)
+    {
       multiply(gcm->buffer);
       gcm->buffered = 0;
       wasm_clear(gcm->buffer, sizeof(gcm->buffer));
@@ -200,27 +216,33 @@ static void hash_update(uint32_t length) {
   }
 }
 
-static void hash_flush(void) {
+static void hash_flush(void)
+{
   Gcm *gcm = &state.gcm;
 
-  if (gcm->buffered != 0) {
+  if (gcm->buffered != 0)
+  {
     multiply(gcm->buffer);
     gcm->buffered = 0;
     wasm_clear(gcm->buffer, sizeof(gcm->buffer));
   }
 }
 
-static void begin_text(void) {
-  if (state.gcm.stage == 2) {
+static void begin_text(void)
+{
+  if (state.gcm.stage == 2)
+  {
     hash_flush();
     state.gcm.stage = 3;
   }
 }
 
-static void begin_aad(void) {
+static void begin_aad(void)
+{
   Gcm *gcm = &state.gcm;
 
-  for (unsigned i = 0; i < 16; i++) {
+  for (unsigned i = 0; i < 16; i++)
+  {
     gcm->mask[i] = gcm->counter[i];
   }
 
@@ -233,24 +255,29 @@ static void begin_aad(void) {
 }
 
 WASM_EXPORT("gcm_begin")
-uint32_t gcm_begin(uint32_t short_nonce) {
+uint32_t gcm_begin(uint32_t short_nonce)
+{
   uint32_t status = aes_ready(0, 1);
 
-  if (status != 0 || short_nonce > 1) {
+  if (status != 0 || short_nonce > 1)
+  {
     return status != 0 ? status : 2;
   }
 
   Gcm *gcm = &state.gcm;
 
-  if (!gcm->prepared) {
+  if (!gcm->prepared)
+  {
     return 3;
   }
 
   reset(gcm);
   gcm->stage = 1;
 
-  if (short_nonce) {
-    for (unsigned i = 0; i < 12; i++) {
+  if (short_nonce)
+  {
+    for (unsigned i = 0; i < 12; i++)
+    {
       gcm->counter[i] = state.iv[i];
     }
 
@@ -262,15 +289,18 @@ uint32_t gcm_begin(uint32_t short_nonce) {
 }
 
 WASM_EXPORT("gcm_nonce")
-uint32_t gcm_nonce(uint32_t length) {
+uint32_t gcm_nonce(uint32_t length)
+{
   uint32_t status = aes_ready(length, 1);
   Gcm *gcm = &state.gcm;
 
-  if (status != 0 || gcm->stage != 1) {
+  if (status != 0 || gcm->stage != 1)
+  {
     return status != 0 ? status : 3;
   }
 
-  if (length > UINT64_MAX / 8 - gcm->nonce_length) {
+  if (length > UINT64_MAX / 8 - gcm->nonce_length)
+  {
     return 2;
   }
 
@@ -280,10 +310,12 @@ uint32_t gcm_nonce(uint32_t length) {
 }
 
 WASM_EXPORT("gcm_nonce_end")
-uint32_t gcm_nonce_end(void) {
+uint32_t gcm_nonce_end(void)
+{
   Gcm *gcm = &state.gcm;
 
-  if (gcm->stage != 1 || gcm->nonce_length == 0) {
+  if (gcm->stage != 1 || gcm->nonce_length == 0)
+  {
     return 3;
   }
 
@@ -298,15 +330,18 @@ uint32_t gcm_nonce_end(void) {
 }
 
 WASM_EXPORT("gcm_aad")
-uint32_t gcm_aad(uint32_t length) {
+uint32_t gcm_aad(uint32_t length)
+{
   uint32_t status = aes_ready(length, 1);
   Gcm *gcm = &state.gcm;
 
-  if (status != 0 || gcm->stage != 2) {
+  if (status != 0 || gcm->stage != 2)
+  {
     return status != 0 ? status : 3;
   }
 
-  if (length > UINT64_MAX / 8 - gcm->aad_length) {
+  if (length > UINT64_MAX / 8 - gcm->aad_length)
+  {
     return 2;
   }
 
@@ -315,27 +350,32 @@ uint32_t gcm_aad(uint32_t length) {
   return 0;
 }
 
-static void transform(uint32_t length) {
+static void transform(uint32_t length)
+{
   Gcm *gcm = &state.gcm;
   aes_stream(gcm->counter, gcm->stream, &gcm->used, length, 12);
 }
 
-static uint32_t authenticate(uint32_t length, int encrypting) {
+static uint32_t authenticate(uint32_t length, int encrypting)
+{
   uint32_t status = aes_ready(length, 1);
   Gcm *gcm = &state.gcm;
 
-  if (status != 0 || (gcm->stage != 2 && gcm->stage != 3)) {
+  if (status != 0 || (gcm->stage != 2 && gcm->stage != 3))
+  {
     return status != 0 ? status : 3;
   }
 
-  if (length > (UINT64_C(1) << 36) - 32 - gcm->text_length) {
+  if (length > (UINT64_C(1) << 36) - 32 - gcm->text_length)
+  {
     return 2;
   }
 
   begin_text();
   gcm->text_length += length;
 
-  if (encrypting) {
+  if (encrypting)
+  {
     transform(length);
   }
 
@@ -350,10 +390,12 @@ WASM_EXPORT("gcm_authenticate")
 uint32_t gcm_authenticate(uint32_t length) { return authenticate(length, 0); }
 
 WASM_EXPORT("gcm_tag")
-uint32_t gcm_tag(void) {
+uint32_t gcm_tag(void)
+{
   Gcm *gcm = &state.gcm;
 
-  if (gcm->stage != 2 && gcm->stage != 3) {
+  if (gcm->stage != 2 && gcm->stage != 3)
+  {
     return 3;
   }
 
@@ -366,7 +408,8 @@ uint32_t gcm_tag(void) {
   store_polynomial(gcm->tag, gcm->hash[0]);
   store_polynomial(gcm->tag + 8, gcm->hash[1]);
 
-  for (unsigned i = 0; i < 16; i++) {
+  for (unsigned i = 0; i < 16; i++)
+  {
     gcm->tag[i] ^= gcm->mask[i];
   }
 
@@ -375,20 +418,24 @@ uint32_t gcm_tag(void) {
 }
 
 WASM_EXPORT("gcm_verify")
-uint32_t gcm_verify(uint32_t length) {
+uint32_t gcm_verify(uint32_t length)
+{
   Gcm *gcm = &state.gcm;
 
-  if (gcm->stage != 4 || length < 12 || length > 16) {
+  if (gcm->stage != 4 || length < 12 || length > 16)
+  {
     return 3;
   }
 
   uint32_t difference = 0;
 
-  for (uint32_t i = 0; i < length; i++) {
+  for (uint32_t i = 0; i < length; i++)
+  {
     difference |= gcm->tag[i] ^ input[i];
   }
 
-  if (difference != 0) {
+  if (difference != 0)
+  {
     reset(gcm);
     return 4;
   }
@@ -398,15 +445,18 @@ uint32_t gcm_verify(uint32_t length) {
 }
 
 WASM_EXPORT("gcm_decrypt")
-uint32_t gcm_decrypt(uint32_t length) {
+uint32_t gcm_decrypt(uint32_t length)
+{
   uint32_t status = aes_ready(length, 1);
   Gcm *gcm = &state.gcm;
 
-  if (status != 0 || gcm->stage != 5) {
+  if (status != 0 || gcm->stage != 5)
+  {
     return status != 0 ? status : 3;
   }
 
-  if (length > gcm->text_length) {
+  if (length > gcm->text_length)
+  {
     return 2;
   }
 

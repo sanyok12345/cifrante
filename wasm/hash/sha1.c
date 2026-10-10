@@ -6,23 +6,24 @@
 #include "buffer.h"
 
 const uint32_t sha1_initial[5] = {
-  0x67452301u, 0xefcdab89u, 0x98badcfeu, 0x10325476u, 0xc3d2e1f0u,
-};
+    0x67452301u, 0xefcdab89u, 0x98badcfeu, 0x10325476u, 0xc3d2e1f0u};
 
 #define ROL(x, n) (((x) << (n)) | ((x) >> (32u - (n))))
 #define F1(b, c, d) ((d) ^ ((b) & ((c) ^ (d))))
 #define F2(b, c, d) ((b) ^ (c) ^ (d))
 #define F3(b, c, d) (((b) & (c)) | ((d) & ((b) | (c))))
 
-#define ROUND(f, k, a, b, c, d, e, w) \
-  do { \
+#define ROUND(f, k, a, b, c, d, e, w)        \
+  do                                         \
+  {                                          \
     e += ROL(a, 5) + f(b, c, d) + (k) + (w); \
-    b = ROL(b, 30); \
+    b = ROL(b, 30);                          \
   } while (0)
 
 #define EXPAND(w0, w2, w8, w13) (w0 = ROL(w13 ^ w8 ^ w2 ^ w0, 1))
 
-void sha1_compress(uint32_t *state, const uint32_t *message) {
+void sha1_compress(uint32_t *state, const uint32_t *message)
+{
   uint32_t w0 = message[0], w1 = message[1], w2 = message[2], w3 = message[3];
   uint32_t w4 = message[4], w5 = message[5], w6 = message[6], w7 = message[7];
   uint32_t w8 = message[8], w9 = message[9], w10 = message[10], w11 = message[11];
@@ -181,10 +182,12 @@ void sha1_compress(uint32_t *state, const uint32_t *message) {
   state[4] += e;
 }
 
-static void compress(void *context, const uint8_t *block) {
+static void compress(void *context, const uint8_t *block)
+{
   uint32_t message[16];
 
-  for (unsigned int i = 0; i < 16; i++) {
+  for (unsigned int i = 0; i < 16; i++)
+  {
     message[i] = wasm_load32_be(block + i * 4);
   }
 
@@ -192,18 +195,22 @@ static void compress(void *context, const uint8_t *block) {
   wasm_clear(message, sizeof(message));
 }
 
-void sha1_init(Sha1 *state) {
+void sha1_init(Sha1 *state)
+{
   wasm_clear(state, sizeof(*state));
 
-  for (unsigned int i = 0; i < 5; i++) {
+  for (unsigned int i = 0; i < 5; i++)
+  {
     state->words[i] = sha1_initial[i];
   }
 }
 
-uint32_t sha1_update(Sha1 *state, const uint8_t *input, size_t length) {
+uint32_t sha1_update(Sha1 *state, const uint8_t *input, size_t length)
+{
   return hash32_update(state, input, length, compress);
 }
 
-uint32_t sha1_finalize(Sha1 *state, uint8_t *output) {
+uint32_t sha1_finalize(Sha1 *state, uint8_t *output)
+{
   return hash32_finalize(state, output, 5, compress);
 }
