@@ -220,25 +220,26 @@ export function createAesWasm(key: Uint8Array) {
       data: Uint8Array,
       iv: Uint8Array,
       decrypt: boolean,
-    ): Uint8Array<ArrayBuffer> {
+      target?: Uint8Array,
+    ): Uint8Array {
       const operation = operations[mode][decrypt ? 1 : 0]
-      let output: Uint8Array<ArrayBuffer> | undefined
+      let output: Uint8Array | undefined
 
       try {
         return run(cipherState, () => {
           memory.set(iv, ivOffset)
 
-          if (data.length <= inputCapacity) {
+          if (target === undefined && data.length <= inputCapacity) {
             output = updateSingle(data, operation)
           } else {
-            output = new Uint8Array(data.length)
+            output = target ?? new Uint8Array(data.length)
             update(data, operation, output)
           }
 
           return output
         })
       } catch (error) {
-        output?.fill(0)
+        output?.fill(0, 0, data.length)
         throw error
       }
     },
@@ -248,9 +249,10 @@ export function createAesWasm(key: Uint8Array) {
       data: Uint8Array,
       iv: Uint8Array,
       decrypt: boolean,
-    ): Promise<Uint8Array<ArrayBuffer>> {
+      target?: Uint8Array,
+    ): Promise<Uint8Array> {
       const operation = operations[mode][decrypt ? 1 : 0]
-      const output = new Uint8Array(data.length)
+      const output = target ?? new Uint8Array(data.length)
       const working = cipherState.slice()
 
       try {
@@ -258,7 +260,7 @@ export function createAesWasm(key: Uint8Array) {
         await feed(working, data, operation, output)
         return output
       } catch (error) {
-        output.fill(0)
+        output.fill(0, 0, data.length)
         throw error
       } finally {
         working.fill(0)
@@ -271,8 +273,8 @@ export function createAesWasm(key: Uint8Array) {
       working.set(iv, ivOffset - stateOffset)
 
       return {
-        update(data: Uint8Array): Uint8Array<ArrayBuffer> {
-          const output = new Uint8Array(data.length)
+        update(data: Uint8Array, target?: Uint8Array): Uint8Array {
+          const output = target ?? new Uint8Array(data.length)
 
           step(working, () => update(data, engine.ctr_transform, output))
           return output

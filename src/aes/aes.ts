@@ -8,6 +8,7 @@ import { ige } from './ige.js'
 
 export interface CipherOptions {
   iv: Binary
+  output?: Uint8Array
 }
 
 export interface Cipher {
@@ -18,7 +19,7 @@ export interface Cipher {
 }
 
 export interface CtrState {
-  update(data: Data): Uint8Array
+  update(data: Data, output?: Uint8Array): Uint8Array
   dispose(): void
 }
 

@@ -96,6 +96,50 @@ export function ivBytes(options: CipherOptions, length: number, copy = true): Ui
   return bytes
 }
 
+export function outputBytes(
+  output: unknown,
+  input: Uint8Array,
+  length: number,
+): Uint8Array | undefined {
+  if (output === undefined) {
+    return undefined
+  }
+
+  if (!(output instanceof Uint8Array)) {
+    throw new InvalidInputError('AES output must be a Uint8Array')
+  }
+
+  if (output.length < length) {
+    throw new InvalidInputError(`AES output must contain at least ${length} bytes`)
+  }
+
+  const start = output.byteOffset
+  const end = input.byteOffset + input.length
+
+  if (
+    output.buffer === input.buffer && start !== input.byteOffset &&
+    start < end && input.byteOffset < start + length
+  ) {
+    throw new InvalidInputError('AES output must not partially overlap the input')
+  }
+
+  return output
+}
+
+export function fit(target: Uint8Array, length: number): Uint8Array {
+  return target.length === length ? target : target.subarray(0, length)
+}
+
+export function deliver(result: Uint8Array, target: Uint8Array | undefined): Uint8Array {
+  if (target === undefined) {
+    return result
+  }
+
+  target.set(result)
+  result.fill(0)
+  return fit(target, result.length)
+}
+
 export class AesBlock {
   private readonly rounds: number
   private readonly schedule: Uint8Array<ArrayBuffer>

@@ -1,12 +1,12 @@
-import { toBinary, toBinaryView, toBytes, toBytesView } from '../bytes.js'
+import { toBinaryView, toBytesView } from '../bytes.js'
 import { AuthenticationError, InvalidInputError } from '../errors.js'
 import { lazy } from '../lazy.js'
 import { nativeCipher } from '../native/web.js'
 import type { Binary } from '../types.js'
 import { createAesWasm } from '../wasm/aes.js'
 import { SLICE } from '../yield.js'
-import type { Cipher } from './aes.js'
-import { AesBlock, ivBytes, keyBytes } from './block.js'
+import type { Cipher, CipherOptions } from './aes.js'
+import { AesBlock, deliver, fit, ivBytes, keyBytes, outputBytes } from './block.js'
 
 export interface CbcOptions {
   padding?: boolean
@@ -32,15 +32,16 @@ export function cbc(key: Binary, options: CbcOptions = {}): Cipher {
     data: Uint8Array,
     initial: Uint8Array,
     decrypt: boolean,
-  ): Uint8Array<ArrayBuffer> {
+    target?: Uint8Array,
+  ): Uint8Array {
     block ??= new AesBlock(secret)
 
-    const output = new Uint8Array(data.length)
-    let previous: Uint8Array = initial
+    const output = target ?? new Uint8Array(data.length)
+    let previous: Uint8Array = initial.slice()
     const mixed = new Uint8Array(16)
 
     for (let offset = 0; offset < data.length; offset += 16) {
-      const input = data.subarray(offset, offset + 16)
+      const input = data.slice(offset, offset + 16)
 
       if (decrypt) {
         const result = block.decrypt(input)
@@ -68,33 +69,43 @@ export function cbc(key: Binary, options: CbcOptions = {}): Cipher {
     data: Uint8Array,
     initial: Uint8Array,
     decrypt: boolean,
-  ): Uint8Array<ArrayBuffer> {
+    target?: Uint8Array,
+  ): Uint8Array {
     const wasm = prepare()
 
-    return wasm ? wasm.transform('cbc', data, initial, decrypt) : fallback(data, initial, decrypt)
+    return wasm
+      ? wasm.transform('cbc', data, initial, decrypt, target)
+      : fallback(data, initial, decrypt, target)
   }
 
   async function transformAsync(
     data: Uint8Array,
     initial: Uint8Array,
     decrypt: boolean,
-  ): Promise<Uint8Array<ArrayBuffer>> {
+    target?: Uint8Array,
+  ): Promise<Uint8Array> {
     if (data.length <= SLICE) {
-      return transform(data, initial, decrypt)
+      return transform(data, initial, decrypt, target)
     }
 
     const wasm = prepare()
 
-    return wasm ? wasm.transformAsync('cbc', data, initial, decrypt) : fallback(data, initial, decrypt)
+    return wasm
+      ? wasm.transformAsync('cbc', data, initial, decrypt, target)
+      : fallback(data, initial, decrypt, target)
+  }
+
+  function padded(length: number): number {
+    return length - length % 16 + 16
   }
 
   function pad(input: Uint8Array): Uint8Array<ArrayBuffer> {
-    const padding = 16 - input.length % 16
-    const padded = new Uint8Array(input.length + padding)
+    const value = padded(input.length) - input.length
+    const output = new Uint8Array(input.length + value)
 
-    padded.set(input)
-    padded.fill(padding, input.length)
-    return padded
+    output.set(input)
+    output.fill(value, input.length)
+    return output
   }
 
   function validate(input: Uint8Array): void {
@@ -111,47 +122,12 @@ export function cbc(key: Binary, options: CbcOptions = {}): Cipher {
     }
   }
 
-  async function blocksAsync(
-    input: Uint8Array,
-    initial: Uint8Array,
-    decrypt: boolean,
-    useNative: boolean,
-  ): Promise<Uint8Array> {
-    validateBlocks(input)
-
-    if (input.length === 0) {
-      return new Uint8Array()
-    }
-
-    if (useNative) {
-      const result = await (decrypt ? native.decryptBlocks : native.encryptBlocks)?.(initial, input)
-
-      if (result !== undefined) {
-        return result
-      }
-    }
-
-    return transformAsync(input, initial, decrypt)
-  }
-
-  function blocksSync(input: Uint8Array, initial: Uint8Array, decrypt: boolean): Uint8Array {
-    validateBlocks(input)
-
-    if (input.length === 0) {
-      return new Uint8Array()
-    }
-
-    const result = (decrypt ? native.decryptBlocksSync : native.encryptBlocksSync)?.(initial, input)
-
-    return result ?? transform(input, initial, decrypt)
-  }
-
-  function unpad(output: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer> {
-    const padding = output[output.length - 1]
-    let invalid = Number(padding === 0 || padding > 16)
+  function unpad(output: Uint8Array, target: Uint8Array | undefined): Uint8Array {
+    const value = output[output.length - 1]
+    let invalid = Number(value === 0 || value > 16)
 
     for (let i = 1; i <= 16; i++) {
-      invalid |= (output[output.length - i] ^ padding) & -(i <= padding ? 1 : 0)
+      invalid |= (output[output.length - i] ^ value) & -(i <= value ? 1 : 0)
     }
 
     if (invalid !== 0) {
@@ -159,94 +135,178 @@ export function cbc(key: Binary, options: CbcOptions = {}): Cipher {
       throw new AuthenticationError('Invalid AES-CBC padding')
     }
 
-    const plaintext = output.slice(0, output.length - padding)
+    if (target !== undefined) {
+      output.fill(0, output.length - value)
+      return fit(target, output.length - value)
+    }
+
+    const plaintext = output.slice(0, output.length - value)
     output.fill(0)
     return plaintext
+  }
+
+  function region(target: Uint8Array | undefined, length: number): Uint8Array | undefined {
+    return target === undefined ? undefined : target.subarray(0, length)
+  }
+
+  function prepareOperation(view: Uint8Array, options: CipherOptions, copy: boolean, decrypt: boolean) {
+    const initial = ivBytes(options, 16, copy)
+    const length = !padding || decrypt ? view.length : padded(view.length)
+
+    return {
+      input: copy ? Uint8Array.from(view) : view,
+      initial,
+      target: outputBytes(options.output, view, length),
+    }
+  }
+
+  async function openAsync(
+    input: Uint8Array,
+    initial: Uint8Array,
+    target: Uint8Array | undefined,
+    useNative: boolean,
+  ): Promise<Uint8Array> {
+    validate(input)
+
+    try {
+      if (useNative) {
+        const decrypted = await native.decrypt(initial, input)
+
+        if (decrypted !== undefined) {
+          return deliver(decrypted, target)
+        }
+      }
+
+      return unpad(await transformAsync(input, initial, true, region(target, input.length)), target)
+    } catch (error) {
+      target?.fill(0, 0, input.length)
+      throw error
+    }
+  }
+
+  function open(input: Uint8Array, initial: Uint8Array, target: Uint8Array | undefined): Uint8Array {
+    validate(input)
+
+    try {
+      const decrypted = native.decryptSync?.(initial, input)
+
+      if (decrypted !== undefined) {
+        return deliver(decrypted, target)
+      }
+
+      return unpad(transform(input, initial, true, region(target, input.length)), target)
+    } catch (error) {
+      target?.fill(0, 0, input.length)
+      throw error
+    }
+  }
+
+  async function blocksAsync(
+    input: Uint8Array,
+    initial: Uint8Array,
+    target: Uint8Array | undefined,
+    decrypt: boolean,
+    useNative: boolean,
+  ): Promise<Uint8Array> {
+    validateBlocks(input)
+
+    if (input.length === 0) {
+      return target ? fit(target, 0) : new Uint8Array()
+    }
+
+    if (useNative) {
+      const result = await (decrypt ? native.decryptBlocks : native.encryptBlocks)?.(initial, input)
+
+      if (result !== undefined) {
+        return deliver(result, target)
+      }
+    }
+
+    return fit(await transformAsync(input, initial, decrypt, region(target, input.length)), input.length)
+  }
+
+  function blocksSync(
+    input: Uint8Array,
+    initial: Uint8Array,
+    target: Uint8Array | undefined,
+    decrypt: boolean,
+  ): Uint8Array {
+    validateBlocks(input)
+
+    if (input.length === 0) {
+      return target ? fit(target, 0) : new Uint8Array()
+    }
+
+    const result = (decrypt ? native.decryptBlocksSync : native.encryptBlocksSync)?.(initial, input)
+
+    if (result !== undefined) {
+      return deliver(result, target)
+    }
+
+    return fit(transform(input, initial, decrypt, region(target, input.length)), input.length)
   }
 
   return {
     async encrypt(data, options) {
       const useNative = native.available()
-      const input = useNative ? toBytes(data) : toBytesView(data)
-      const initial = ivBytes(options, 16, useNative)
+      const { input, initial, target } = prepareOperation(toBytesView(data), options, useNative, false)
 
       if (!padding) {
-        return blocksAsync(input, initial, false, useNative)
+        return blocksAsync(input, initial, target, false, useNative)
       }
 
       if (useNative) {
         const result = await native.encrypt(initial, input)
 
         if (result !== undefined) {
-          return result
+          return deliver(result, target)
         }
       }
 
-      const padded = pad(input)
+      const plain = pad(input)
 
       try {
-        return await transformAsync(padded, initial, false)
+        return fit(await transformAsync(plain, initial, false, region(target, plain.length)), plain.length)
       } finally {
-        padded.fill(0)
+        plain.fill(0)
       }
     },
 
     async decrypt(data, options) {
       const useNative = native.available()
-      const input = useNative ? toBinary(data) : toBinaryView(data)
-      const initial = ivBytes(options, 16, useNative)
+      const { input, initial, target } = prepareOperation(toBinaryView(data), options, useNative, true)
 
-      if (!padding) {
-        return blocksAsync(input, initial, true, useNative)
-      }
-
-      validate(input)
-
-      if (useNative) {
-        const decrypted = await native.decrypt(initial, input)
-
-        if (decrypted !== undefined) {
-          return decrypted
-        }
-      }
-
-      return unpad(await transformAsync(input, initial, true))
+      return padding
+        ? openAsync(input, initial, target, useNative)
+        : blocksAsync(input, initial, target, true, useNative)
     },
 
     encryptSync(data, options) {
-      const input = toBytesView(data)
-      const initial = ivBytes(options, 16, false)
+      const { input, initial, target } = prepareOperation(toBytesView(data), options, false, false)
 
       if (!padding) {
-        return blocksSync(input, initial, false)
+        return blocksSync(input, initial, target, false)
       }
 
       const result = native.encryptSync?.(initial, input)
 
       if (result !== undefined) {
-        return result
+        return deliver(result, target)
       }
 
-      const padded = pad(input)
+      const plain = pad(input)
 
       try {
-        return transform(padded, initial, false)
+        return fit(transform(plain, initial, false, region(target, plain.length)), plain.length)
       } finally {
-        padded.fill(0)
+        plain.fill(0)
       }
     },
 
     decryptSync(data, options) {
-      const input = toBinaryView(data)
-      const initial = ivBytes(options, 16, false)
+      const { input, initial, target } = prepareOperation(toBinaryView(data), options, false, true)
 
-      if (!padding) {
-        return blocksSync(input, initial, true)
-      }
-
-      validate(input)
-
-      return native.decryptSync?.(initial, input) ?? unpad(transform(input, initial, true))
+      return padding ? open(input, initial, target) : blocksSync(input, initial, target, true)
     },
   }
 }

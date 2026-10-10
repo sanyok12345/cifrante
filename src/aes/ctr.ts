@@ -1,13 +1,17 @@
-import { toBinary, toBinaryView, toBytes, toBytesView } from '../bytes.js'
+import { toBinaryView, toBytesView } from '../bytes.js'
 import { InvalidInputError } from '../errors.js'
 import { lazy } from '../lazy.js'
 import { createAesWasm } from '../wasm/aes.js'
 import { nativeCipher } from '../native/web.js'
-import type { NativeStream } from '../native/types.js'
 import type { Binary } from '../types.js'
 import { SLICE } from '../yield.js'
-import type { CtrCipher } from './aes.js'
-import { AesBlock, ivBytes, keyBytes } from './block.js'
+import type { CipherOptions, CtrCipher } from './aes.js'
+import { AesBlock, deliver, fit, ivBytes, keyBytes, outputBytes } from './block.js'
+
+interface Stream {
+  update(data: Uint8Array, target?: Uint8Array): Uint8Array
+  dispose(): void
+}
 
 export function ctr(key: Binary): CtrCipher {
   const secret = keyBytes(key)
@@ -15,7 +19,7 @@ export function ctr(key: Binary): CtrCipher {
   const prepare = lazy(() => createAesWasm(secret))
   let block: AesBlock | undefined
 
-  function software(initial: Uint8Array): NativeStream {
+  function software(initial: Uint8Array): Stream {
     block ??= new AesBlock(secret)
 
     const counter = Uint8Array.from(initial)
@@ -23,8 +27,8 @@ export function ctr(key: Binary): CtrCipher {
     let used = 16
 
     return {
-      update(data) {
-        const output = new Uint8Array(data.length)
+      update(data, target) {
+        const output = target ?? new Uint8Array(data.length)
 
         for (let offset = 0; offset < data.length;) {
           if (used === 16) {
@@ -59,20 +63,38 @@ export function ctr(key: Binary): CtrCipher {
     }
   }
 
+  function stream(initial: Uint8Array): Stream {
+    const state = native.stream?.(initial)
+
+    if (state !== undefined) {
+      return {
+        update: (data, target) => deliver(state.update(data), target),
+        dispose: () => state.dispose(),
+      }
+    }
+
+    return prepare()?.ctrState(initial) ?? software(initial)
+  }
+
   function transform(
     data: Uint8Array,
     initial: Uint8Array,
     decrypt: boolean,
+    target: Uint8Array | undefined,
   ): Uint8Array {
     const wasm = prepare()
+    const output = wasm
+      ? wasm.transform('ctr', data, initial, decrypt, target)
+      : software(initial).update(data, target)
 
-    return wasm ? wasm.transform('ctr', data, initial, decrypt) : software(initial).update(data)
+    return fit(output, data.length)
   }
 
   async function transformAsync(
     data: Uint8Array,
     initial: Uint8Array,
     decrypt: boolean,
+    target: Uint8Array | undefined,
     useNative: boolean,
   ): Promise<Uint8Array> {
     if (useNative) {
@@ -81,62 +103,82 @@ export function ctr(key: Binary): CtrCipher {
         : native.encrypt(initial, data))
 
       if (result !== undefined) {
-        return result
+        return deliver(result, target)
       }
     }
 
     if (data.length <= SLICE) {
-      return transform(data, initial, decrypt)
+      return transform(data, initial, decrypt, target)
     }
 
     const wasm = prepare()
+    const output = wasm
+      ? await wasm.transformAsync('ctr', data, initial, decrypt, target)
+      : software(initial).update(data, target)
 
-    return wasm ? wasm.transformAsync('ctr', data, initial, decrypt) : software(initial).update(data)
+    return fit(output, data.length)
   }
 
-  function transformSync(data: Uint8Array, initial: Uint8Array, decrypt: boolean): Uint8Array {
+  function transformSync(
+    data: Uint8Array,
+    initial: Uint8Array,
+    decrypt: boolean,
+    target: Uint8Array | undefined,
+  ): Uint8Array {
     const result = decrypt ? native.decryptSync?.(initial, data) : native.encryptSync?.(initial, data)
 
-    return result ?? transform(data, initial, decrypt)
+    return result === undefined ? transform(data, initial, decrypt, target) : deliver(result, target)
+  }
+
+  function operation(view: Uint8Array, options: CipherOptions, copy: boolean) {
+    return {
+      input: copy ? Uint8Array.from(view) : view,
+      initial: ivBytes(options, 16, copy),
+      target: outputBytes(options.output, view, view.length),
+    }
   }
 
   return {
     async encrypt(data, options) {
       const useNative = native.available()
-      const input = useNative ? toBytes(data) : toBytesView(data)
-      const initial = ivBytes(options, 16, useNative)
-      return transformAsync(input, initial, false, useNative)
+      const { input, initial, target } = operation(toBytesView(data), options, useNative)
+      return transformAsync(input, initial, false, target, useNative)
     },
 
     async decrypt(data, options) {
       const useNative = native.available()
-      const input = useNative ? toBinary(data) : toBinaryView(data)
-      const initial = ivBytes(options, 16, useNative)
-      return transformAsync(input, initial, true, useNative)
+      const { input, initial, target } = operation(toBinaryView(data), options, useNative)
+      return transformAsync(input, initial, true, target, useNative)
     },
 
     encryptSync(data, options) {
-      return transformSync(toBytesView(data), ivBytes(options, 16, false), false)
+      const { input, initial, target } = operation(toBytesView(data), options, false)
+      return transformSync(input, initial, false, target)
     },
 
     decryptSync(data, options) {
-      return transformSync(toBinaryView(data), ivBytes(options, 16, false), true)
+      const { input, initial, target } = operation(toBinaryView(data), options, false)
+      return transformSync(input, initial, true, target)
     },
 
     create(options) {
-      const initial = ivBytes(options, 16)
-      const state = native.stream?.(initial) ?? prepare()?.ctrState(initial) ?? software(initial)
+      const state = stream(ivBytes(options, 16))
       let disposed = false
 
       return {
-        update(data) {
+        update(data, output) {
           if (disposed) {
             throw new InvalidInputError('AES-CTR state has been disposed')
           }
 
           const input = toBytesView(data)
+          const target = outputBytes(output, input, input.length)
 
-          return input.length === 0 ? new Uint8Array() : state.update(input)
+          if (input.length === 0) {
+            return target ? fit(target, 0) : new Uint8Array()
+          }
+
+          return fit(state.update(input, target), input.length)
         },
 
         dispose() {
