@@ -136,7 +136,6 @@ export function deliver(result: Uint8Array, target: Uint8Array | undefined): Uin
   }
 
   target.set(result)
-  result.fill(0)
   return fit(target, result.length)
 }
 
