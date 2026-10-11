@@ -54,9 +54,13 @@ export interface NativeAead {
   ): Uint8Array | undefined
 }
 
-export interface NativeIge {
+export interface NativeAddon {
   encrypt(key: Uint8Array, iv: Uint8Array, input: Uint8Array, output: Uint8Array): void
   decrypt(key: Uint8Array, iv: Uint8Array, input: Uint8Array, output: Uint8Array): void
+  encryptAsync(key: Uint8Array, iv: Uint8Array, input: Uint8Array, output: Uint8Array): Promise<void>
+  decryptAsync(key: Uint8Array, iv: Uint8Array, input: Uint8Array, output: Uint8Array): Promise<void>
+  expand(key: Uint8Array, schedule: Uint8Array): void
+  ctr(schedule: Uint8Array, state: Uint8Array, input: Uint8Array, output: Uint8Array): void
 }
 
 export interface NativeRsaKey {

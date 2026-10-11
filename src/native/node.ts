@@ -30,7 +30,7 @@ import type {
   NativeAead,
   NativeCipher,
   NativeHash,
-  NativeIge,
+  NativeAddon,
   NativeOaep,
   NativeStream,
   NativeRsaKey,
@@ -93,7 +93,9 @@ function adaptHash(hash: crypto.Hash | crypto.Hmac): NativeHash {
   }
 }
 
-const addon = /* @__PURE__ */ lazy((): NativeIge | undefined => {
+const ADDON_EXPORTS = ['encrypt', 'decrypt', 'encryptAsync', 'decryptAsync', 'expand', 'ctr'] as const
+
+const addon = /* @__PURE__ */ lazy((): NativeAddon | undefined => {
   if (process.env.CIFRANTE_NATIVE === '0') {
     return undefined
   }
@@ -104,9 +106,9 @@ const addon = /* @__PURE__ */ lazy((): NativeIge | undefined => {
 
   for (const candidate of candidates) {
     try {
-      const module = load(candidate) as NativeIge & { supported(): boolean }
+      const module = load(candidate) as NativeAddon & { supported(): boolean }
 
-      if (module.supported()) {
+      if (ADDON_EXPORTS.every(name => typeof module[name] === 'function') && module.supported()) {
         return module
       }
     } catch {
@@ -117,7 +119,7 @@ const addon = /* @__PURE__ */ lazy((): NativeIge | undefined => {
   return undefined
 })
 
-export function nativeIge(): NativeIge | undefined {
+export function nativeAddon(): NativeAddon | undefined {
   return addon()
 }
 

@@ -6,7 +6,7 @@ import type {
   NativeAead,
   NativeCipher,
   NativeHash,
-  NativeIge,
+  NativeAddon,
   NativeOaep,
   NativeRsaKey,
 } from './types.js'
@@ -137,7 +137,7 @@ export function nativeHash(_name: string): NativeHash | undefined {
   return undefined
 }
 
-export function nativeIge(): NativeIge | undefined {
+export function nativeAddon(): NativeAddon | undefined {
   return undefined
 }
 

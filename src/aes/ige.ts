@@ -1,7 +1,7 @@
 import { toBinaryView, toBytesView } from '../bytes.js'
 import { InvalidInputError } from '../errors.js'
 import { lazy } from '../lazy.js'
-import { nativeCipher, nativeIge } from '../native/web.js'
+import { nativeAddon, nativeCipher } from '../native/web.js'
 import type { Binary } from '../types.js'
 import { createAesWasm } from '../wasm/aes.js'
 import { SLICE, yieldNow } from '../yield.js'
@@ -100,7 +100,7 @@ function continuation(
 
 export function ige(key: Binary): Cipher {
   const secret = keyBytes(key)
-  const accelerated = nativeIge()
+  const accelerated = nativeAddon()
   const native = nativeCipher('cbc', secret)
   const prepare = lazy(() => createAesWasm(secret))
   let block: AesBlock | undefined

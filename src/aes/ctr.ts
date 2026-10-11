@@ -2,7 +2,7 @@ import { toBinaryView, toBytesView } from '../bytes.js'
 import { InvalidInputError } from '../errors.js'
 import { lazy } from '../lazy.js'
 import { createAesWasm } from '../wasm/aes.js'
-import { nativeCipher } from '../native/web.js'
+import { nativeAddon, nativeCipher } from '../native/web.js'
 import type { Binary } from '../types.js'
 import { SLICE } from '../yield.js'
 import type { CipherOptions, CtrCipher } from './aes.js'
@@ -16,8 +16,50 @@ interface Stream {
 export function ctr(key: Binary): CtrCipher {
   const secret = keyBytes(key)
   const native = nativeCipher('ctr', secret)
+  const accelerated = nativeAddon()
   const prepare = lazy(() => createAesWasm(secret))
+  const schedule = lazy(() => {
+    const keys = new Uint8Array(241)
+
+    accelerated!.expand(secret, keys)
+    return keys
+  })
   let block: AesBlock | undefined
+
+  function counter(initial: Uint8Array): Uint8Array<ArrayBuffer> {
+    const state = new Uint8Array(33)
+
+    state.set(initial)
+    state[32] = 16
+    return state
+  }
+
+  function hardware(initial: Uint8Array): Stream {
+    const keys = schedule().slice()
+    const state = counter(initial)
+
+    return {
+      update(data, target) {
+        const output = target ? fit(target, data.length) : new Uint8Array(data.length)
+
+        accelerated!.ctr(keys, state, data, output)
+        return output
+      },
+      dispose() {
+        keys.fill(0)
+        state.fill(0)
+      },
+    }
+  }
+
+  function keystream(data: Uint8Array, initial: Uint8Array, target: Uint8Array | undefined): Uint8Array {
+    const state = counter(initial)
+    const output = target ? fit(target, data.length) : new Uint8Array(data.length)
+
+    accelerated!.ctr(schedule(), state, data, output)
+    state.fill(0)
+    return output
+  }
 
   function software(initial: Uint8Array): Stream {
     block ??= new AesBlock(secret)
@@ -64,6 +106,10 @@ export function ctr(key: Binary): CtrCipher {
   }
 
   function stream(initial: Uint8Array): Stream {
+    if (accelerated) {
+      return hardware(initial)
+    }
+
     const state = native.stream?.(initial)
 
     if (state !== undefined) {
@@ -97,6 +143,10 @@ export function ctr(key: Binary): CtrCipher {
     target: Uint8Array | undefined,
     useNative: boolean,
   ): Promise<Uint8Array> {
+    if (accelerated) {
+      return keystream(data, initial, target)
+    }
+
     if (useNative) {
       const result = await (decrypt
         ? native.decrypt(initial, data)
@@ -125,6 +175,10 @@ export function ctr(key: Binary): CtrCipher {
     decrypt: boolean,
     target: Uint8Array | undefined,
   ): Uint8Array {
+    if (accelerated) {
+      return keystream(data, initial, target)
+    }
+
     const result = decrypt ? native.decryptSync?.(initial, data) : native.encryptSync?.(initial, data)
 
     return result === undefined ? transform(data, initial, decrypt, target) : deliver(result, target)
@@ -140,13 +194,13 @@ export function ctr(key: Binary): CtrCipher {
 
   return {
     async encrypt(data, options) {
-      const useNative = native.available()
+      const useNative = !accelerated && native.available()
       const { input, initial, target } = operation(toBytesView(data), options, useNative)
       return transformAsync(input, initial, false, target, useNative)
     },
 
     async decrypt(data, options) {
-      const useNative = native.available()
+      const useNative = !accelerated && native.available()
       const { input, initial, target } = operation(toBinaryView(data), options, useNative)
       return transformAsync(input, initial, true, target, useNative)
     },
