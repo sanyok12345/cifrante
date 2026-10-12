@@ -3,28 +3,36 @@ import { InvalidInputError } from '../errors.js'
 import { lazy } from '../lazy.js'
 import { createAesWasm } from '../wasm/aes.js'
 import { nativeAddon, nativeCipher } from '../native/web.js'
-import type { Binary } from '../types.js'
+import type { Binary, Disposal } from '../types.js'
 import { SLICE } from '../yield.js'
-import type { CipherOptions, CtrCipher } from './aes.js'
-import { AesBlock, deliver, fit, ivBytes, keyBytes, outputBytes } from './block.js'
+import type { CipherOptions, CtrCipher, CtrState } from './aes.js'
+import { AesBlock, deliver, disposable, fit, ivBytes, keyBytes, lifecycle, outputBytes } from './block.js'
 
 interface Stream {
   update(data: Uint8Array, target?: Uint8Array): Uint8Array
   dispose(): void
 }
 
-export function ctr(key: Binary): CtrCipher {
+export function ctr(key: Binary): CtrCipher & Disposal {
   const secret = keyBytes(key)
   const native = nativeCipher('ctr', secret)
   const accelerated = nativeAddon()
-  const prepare = lazy(() => createAesWasm(secret))
+  let instance: ReturnType<typeof createAesWasm>
+  const prepare = lazy(() => (instance = createAesWasm(secret)))
+  let keys: Uint8Array<ArrayBuffer> | undefined
   const schedule = lazy(() => {
-    const keys = new Uint8Array(241)
-
+    keys = new Uint8Array(241)
     accelerated!.expand(secret, keys)
     return keys
   })
   let block: AesBlock | undefined
+  const life = lifecycle('AES-CTR cipher', () => {
+    secret.fill(0)
+    keys?.fill(0)
+    instance?.dispose()
+    block?.clear()
+  })
+  const guard = life.check
 
   function counter(initial: Uint8Array): Uint8Array<ArrayBuffer> {
     const state = new Uint8Array(33)
@@ -61,9 +69,8 @@ export function ctr(key: Binary): CtrCipher {
     return output
   }
 
-  function software(initial: Uint8Array): Stream {
-    block ??= new AesBlock(secret)
-
+  function software(initial: Uint8Array, own = false): Stream {
+    const engine = own ? new AesBlock(secret) : (block ??= new AesBlock(secret))
     const counter = Uint8Array.from(initial)
     let keystream = new Uint8Array(16)
     let used = 16
@@ -74,7 +81,7 @@ export function ctr(key: Binary): CtrCipher {
 
         for (let offset = 0; offset < data.length;) {
           if (used === 16) {
-            keystream = block!.encrypt(counter)
+            keystream = engine.encrypt(counter)
             used = 0
 
             for (let i = 15; i >= 0; i--) {
@@ -101,6 +108,10 @@ export function ctr(key: Binary): CtrCipher {
       dispose() {
         counter.fill(0)
         keystream.fill(0)
+
+        if (own) {
+          engine.clear()
+        }
       },
     }
   }
@@ -119,7 +130,7 @@ export function ctr(key: Binary): CtrCipher {
       }
     }
 
-    return prepare()?.ctrState(initial) ?? software(initial)
+    return prepare()?.ctrState(initial) ?? software(initial, true)
   }
 
   function transform(
@@ -152,6 +163,8 @@ export function ctr(key: Binary): CtrCipher {
         ? native.decrypt(initial, data)
         : native.encrypt(initial, data))
 
+      guard()
+
       if (result !== undefined) {
         return deliver(result, target)
       }
@@ -163,7 +176,7 @@ export function ctr(key: Binary): CtrCipher {
 
     const wasm = prepare()
     const output = wasm
-      ? await wasm.transformAsync('ctr', data, initial, decrypt, target)
+      ? await wasm.transformAsync('ctr', data, initial, decrypt, target, guard)
       : software(initial).update(data, target)
 
     return fit(output, data.length)
@@ -185,6 +198,8 @@ export function ctr(key: Binary): CtrCipher {
   }
 
   function operation(view: Uint8Array, options: CipherOptions, copy: boolean) {
+    life.check()
+
     return {
       input: copy ? Uint8Array.from(view) : view,
       initial: ivBytes(options, 16, copy),
@@ -192,7 +207,7 @@ export function ctr(key: Binary): CtrCipher {
     }
   }
 
-  return {
+  return disposable<CtrCipher>({
     async encrypt(data, options) {
       const useNative = !accelerated && native.available()
       const { input, initial, target } = operation(toBytesView(data), options, useNative)
@@ -216,10 +231,12 @@ export function ctr(key: Binary): CtrCipher {
     },
 
     create(options) {
+      life.check()
+
       const state = stream(ivBytes(options, 16))
       let disposed = false
 
-      return {
+      return disposable<CtrState>({
         update(data, output) {
           if (disposed) {
             throw new InvalidInputError('AES-CTR state has been disposed')
@@ -241,7 +258,9 @@ export function ctr(key: Binary): CtrCipher {
             state.dispose()
           }
         },
-      }
+      })
     },
-  }
+
+    dispose: life.dispose,
+  })
 }

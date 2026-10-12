@@ -150,7 +150,8 @@ export function createAesWasm(key: Uint8Array) {
     working: Uint8Array,
     data: Uint8Array,
     operation: (length: number) => number,
-    output?: Uint8Array,
+    output: Uint8Array | undefined,
+    guard: () => void,
   ): Promise<void> {
     for (let offset = 0; offset < data.length; offset += SLICE) {
       const slice = data.subarray(offset, offset + SLICE)
@@ -159,6 +160,7 @@ export function createAesWasm(key: Uint8Array) {
 
       if (offset + SLICE < data.length) {
         await yieldNow()
+        guard()
       }
     }
   }
@@ -176,7 +178,12 @@ export function createAesWasm(key: Uint8Array) {
     update(aad, engine.gcm_aad)
   }
 
-  async function beginGcmAsync(working: Uint8Array, nonce: Uint8Array, aad: Uint8Array): Promise<void> {
+  async function beginGcmAsync(
+    working: Uint8Array,
+    nonce: Uint8Array,
+    aad: Uint8Array,
+    guard: () => void,
+  ): Promise<void> {
     if (nonce.length === 12) {
       step(working, () => {
         memory.set(nonce, ivOffset)
@@ -184,11 +191,11 @@ export function createAesWasm(key: Uint8Array) {
       })
     } else {
       step(working, () => check(engine.gcm_begin(0)))
-      await feed(working, nonce, engine.gcm_nonce)
+      await feed(working, nonce, engine.gcm_nonce, undefined, guard)
       step(working, () => check(engine.gcm_nonce_end()))
     }
 
-    await feed(working, aad, engine.gcm_aad)
+    await feed(working, aad, engine.gcm_aad, undefined, guard)
   }
 
   function prepareGcm(): void {
@@ -249,7 +256,8 @@ export function createAesWasm(key: Uint8Array) {
       data: Uint8Array,
       iv: Uint8Array,
       decrypt: boolean,
-      target?: Uint8Array,
+      target: Uint8Array | undefined,
+      guard: () => void,
     ): Promise<Uint8Array> {
       const operation = operations[mode][decrypt ? 1 : 0]
       const output = target ?? new Uint8Array(data.length)
@@ -257,7 +265,7 @@ export function createAesWasm(key: Uint8Array) {
 
       try {
         step(working, () => memory.set(iv, ivOffset))
-        await feed(working, data, operation, output)
+        await feed(working, data, operation, output, guard)
         return output
       } catch (error) {
         output.fill(0, 0, data.length)
@@ -311,14 +319,15 @@ export function createAesWasm(key: Uint8Array) {
       nonce: Uint8Array,
       aad: Uint8Array,
       tagLength: number,
+      guard: () => void,
     ): Promise<WasmSealed> {
       prepareGcm()
       const ciphertext = new Uint8Array(data.length)
       const working = state.slice()
 
       try {
-        await beginGcmAsync(working, nonce, aad)
-        await feed(working, data, engine.gcm_encrypt, ciphertext)
+        await beginGcmAsync(working, nonce, aad, guard)
+        await feed(working, data, engine.gcm_encrypt, ciphertext, guard)
         return { ciphertext, tag: step(working, () => tag(tagLength)) }
       } catch (error) {
         ciphertext.fill(0)
@@ -357,17 +366,18 @@ export function createAesWasm(key: Uint8Array) {
       nonce: Uint8Array,
       aad: Uint8Array,
       expected: Uint8Array,
+      guard: () => void,
     ): Promise<Uint8Array<ArrayBuffer>> {
       prepareGcm()
       const working = state.slice()
       let output: Uint8Array<ArrayBuffer> | undefined
 
       try {
-        await beginGcmAsync(working, nonce, aad)
-        await feed(working, data, engine.gcm_authenticate)
+        await beginGcmAsync(working, nonce, aad, guard)
+        await feed(working, data, engine.gcm_authenticate, undefined, guard)
         step(working, () => verify(expected))
         output = new Uint8Array(data.length)
-        await feed(working, data, engine.gcm_decrypt, output)
+        await feed(working, data, engine.gcm_decrypt, output, guard)
         return output
       } catch (error) {
         output?.fill(0)
@@ -375,6 +385,11 @@ export function createAesWasm(key: Uint8Array) {
       } finally {
         working.fill(0)
       }
+    },
+
+    dispose(): void {
+      state.fill(0)
+      gcmReady = false
     },
   }
 }

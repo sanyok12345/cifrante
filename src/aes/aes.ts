@@ -1,4 +1,4 @@
-import type { Binary, Data } from '../types.js'
+import type { Binary, Data, Disposal } from '../types.js'
 import { cbc } from './cbc.js'
 import type { CbcOptions } from './cbc.js'
 import { ctr } from './ctr.js'
@@ -16,6 +16,7 @@ export interface Cipher {
   decrypt(data: Binary, options: CipherOptions): Promise<Uint8Array>
   encryptSync(data: Data, options: CipherOptions): Uint8Array
   decryptSync(data: Binary, options: CipherOptions): Uint8Array
+  dispose(): void
 }
 
 export interface CtrState {
@@ -24,14 +25,14 @@ export interface CtrState {
 }
 
 export interface CtrCipher extends Cipher {
-  create(options: CipherOptions): CtrState
+  create(options: CipherOptions): CtrState & Disposal
 }
 
 export interface AES {
-  ige(key: Binary): Cipher
-  ctr(key: Binary): CtrCipher
-  cbc(key: Binary, options?: CbcOptions): Cipher
-  gcm(key: Binary, options?: GcmOptions): AeadCipher
+  ige(key: Binary): Cipher & Disposal
+  ctr(key: Binary): CtrCipher & Disposal
+  cbc(key: Binary, options?: CbcOptions): Cipher & Disposal
+  gcm(key: Binary, options?: GcmOptions): AeadCipher & Disposal
 }
 
 export const aes: AES = { ige, ctr, cbc, gcm }

@@ -2,17 +2,17 @@ import { toBinaryView, toBytesView } from '../bytes.js'
 import { AuthenticationError, InvalidInputError } from '../errors.js'
 import { lazy } from '../lazy.js'
 import { nativeCipher } from '../native/web.js'
-import type { Binary } from '../types.js'
+import type { Binary, Disposal } from '../types.js'
 import { createAesWasm } from '../wasm/aes.js'
 import { SLICE } from '../yield.js'
 import type { Cipher, CipherOptions } from './aes.js'
-import { AesBlock, deliver, fit, ivBytes, keyBytes, outputBytes } from './block.js'
+import { AesBlock, deliver, disposable, fit, ivBytes, keyBytes, lifecycle, outputBytes } from './block.js'
 
 export interface CbcOptions {
   padding?: boolean
 }
 
-export function cbc(key: Binary, options: CbcOptions = {}): Cipher {
+export function cbc(key: Binary, options: CbcOptions = {}): Cipher & Disposal {
   const secret = keyBytes(key)
 
   if (options === null || typeof options !== 'object' || Array.isArray(options)) {
@@ -25,8 +25,15 @@ export function cbc(key: Binary, options: CbcOptions = {}): Cipher {
 
   const padding = options.padding ?? true
   const native = nativeCipher('cbc', secret)
-  const prepare = lazy(() => createAesWasm(secret))
+  let instance: ReturnType<typeof createAesWasm>
+  const prepare = lazy(() => (instance = createAesWasm(secret)))
   let block: AesBlock | undefined
+  const life = lifecycle('AES-CBC cipher', () => {
+    secret.fill(0)
+    instance?.dispose()
+    block?.clear()
+  })
+  const guard = life.check
 
   function fallback(
     data: Uint8Array,
@@ -91,7 +98,7 @@ export function cbc(key: Binary, options: CbcOptions = {}): Cipher {
     const wasm = prepare()
 
     return wasm
-      ? wasm.transformAsync('cbc', data, initial, decrypt, target)
+      ? wasm.transformAsync('cbc', data, initial, decrypt, target, guard)
       : fallback(data, initial, decrypt, target)
   }
 
@@ -150,6 +157,8 @@ export function cbc(key: Binary, options: CbcOptions = {}): Cipher {
   }
 
   function prepareOperation(view: Uint8Array, options: CipherOptions, copy: boolean, decrypt: boolean) {
+    life.check()
+
     const initial = ivBytes(options, 16, copy)
     const length = !padding || decrypt ? view.length : padded(view.length)
 
@@ -171,6 +180,8 @@ export function cbc(key: Binary, options: CbcOptions = {}): Cipher {
     try {
       if (useNative) {
         const decrypted = await native.decrypt(initial, input)
+
+        guard()
 
         if (decrypted !== undefined) {
           return deliver(decrypted, target)
@@ -217,6 +228,8 @@ export function cbc(key: Binary, options: CbcOptions = {}): Cipher {
     if (useNative) {
       const result = await (decrypt ? native.decryptBlocks : native.encryptBlocks)?.(initial, input)
 
+      guard()
+
       if (result !== undefined) {
         return deliver(result, target)
       }
@@ -246,7 +259,7 @@ export function cbc(key: Binary, options: CbcOptions = {}): Cipher {
     return fit(transform(input, initial, decrypt, region(target, input.length)), input.length)
   }
 
-  return {
+  return disposable<Cipher>({
     async encrypt(data, options) {
       const useNative = native.available()
       const { input, initial, target } = prepareOperation(toBytesView(data), options, useNative, false)
@@ -257,6 +270,8 @@ export function cbc(key: Binary, options: CbcOptions = {}): Cipher {
 
       if (useNative) {
         const result = await native.encrypt(initial, input)
+
+        guard()
 
         if (result !== undefined) {
           return deliver(result, target)
@@ -308,5 +323,7 @@ export function cbc(key: Binary, options: CbcOptions = {}): Cipher {
 
       return padding ? open(input, initial, target) : blocksSync(input, initial, target, true)
     },
-  }
+
+    dispose: life.dispose,
+  })
 }

@@ -2,11 +2,11 @@ import { toBinaryView, toBytesView } from '../bytes.js'
 import { InvalidInputError } from '../errors.js'
 import { lazy } from '../lazy.js'
 import { nativeAddon, nativeCipher } from '../native/web.js'
-import type { Binary } from '../types.js'
+import type { Binary, Disposal } from '../types.js'
 import { createAesWasm } from '../wasm/aes.js'
 import { SLICE, yieldNow } from '../yield.js'
 import type { Cipher, CipherOptions } from './aes.js'
-import { AesBlock, fit, ivBytes, keyBytes, outputBytes } from './block.js'
+import { AesBlock, disposable, fit, ivBytes, keyBytes, lifecycle, outputBytes } from './block.js'
 
 const CBC_SYNC_THRESHOLD = 512
 const CBC_ASYNC_THRESHOLD = 65536
@@ -98,12 +98,19 @@ function continuation(
   return iv
 }
 
-export function ige(key: Binary): Cipher {
+export function ige(key: Binary): Cipher & Disposal {
   const secret = keyBytes(key)
   const accelerated = nativeAddon()
   const native = nativeCipher('cbc', secret)
-  const prepare = lazy(() => createAesWasm(secret))
+  let instance: ReturnType<typeof createAesWasm>
+  const prepare = lazy(() => (instance = createAesWasm(secret)))
   let block: AesBlock | undefined
+  const life = lifecycle('AES-IGE cipher', () => {
+    secret.fill(0)
+    instance?.dispose()
+    block?.clear()
+  })
+  const guard = life.check
 
   function validate(data: Uint8Array): void {
     if (data.length % 16 !== 0) {
@@ -193,6 +200,7 @@ export function ige(key: Binary): Cipher {
         if (end < data.length) {
           iv = continuation(tail, output, end, decrypt)
           await yieldNow()
+          guard()
         }
       }
 
@@ -220,6 +228,8 @@ export function ige(key: Binary): Cipher {
       const prepared = chainInput(slice, before, previous)
       const blocks = await encryptBlocks(chain, prepared)
 
+      guard()
+
       if (blocks === undefined) {
         output.fill(0, 0, offset)
         return undefined
@@ -230,6 +240,7 @@ export function ige(key: Binary): Cipher {
 
       if (yields && offset + SLICE < data.length) {
         await yieldNow()
+        guard()
       }
     }
 
@@ -336,6 +347,8 @@ export function ige(key: Binary): Cipher {
     if (!decrypt) {
       const output = await encryptCbcAsync(data, initial, target)
 
+      guard()
+
       if (output !== undefined) {
         return fit(output, data.length)
       }
@@ -347,7 +360,7 @@ export function ige(key: Binary): Cipher {
 
     const wasm = prepare()
     const output = wasm
-      ? await wasm.transformAsync('ige', data, initial, decrypt, target)
+      ? await wasm.transformAsync('ige', data, initial, decrypt, target, guard)
       : fallback(data, initial, decrypt, target)
 
     return fit(output, data.length)
@@ -358,12 +371,14 @@ export function ige(key: Binary): Cipher {
     options: CipherOptions,
     operation: (input: Uint8Array, initial: Uint8Array, target: Uint8Array | undefined) => T,
   ): T {
+    life.check()
+
     const initial = ivBytes(options, 32, false)
 
     return operation(data, initial, outputBytes(options.output, data, data.length))
   }
 
-  return {
+  return disposable<Cipher>({
     async encrypt(data, options) {
       return run(toBytesView(data), options, (input, initial, target) =>
         transformAsync(input, initial, false, target))
@@ -383,5 +398,7 @@ export function ige(key: Binary): Cipher {
       return run(toBinaryView(data), options, (input, initial, target) =>
         transform(input, initial, true, target))
     },
-  }
+
+    dispose: life.dispose,
+  })
 }

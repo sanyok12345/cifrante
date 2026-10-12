@@ -4,8 +4,8 @@ import { lazy } from '../lazy.js'
 import { SLICE } from '../yield.js'
 import { createAesWasm } from '../wasm/aes.js'
 import { nativeGcm } from '../native/web.js'
-import type { Binary, Data } from '../types.js'
-import { AesBlock, keyBytes } from './block.js'
+import type { Binary, Data, Disposal } from '../types.js'
+import { AesBlock, disposable, keyBytes, lifecycle } from './block.js'
 
 export interface GcmOptions {
   tagLength?: 96 | 104 | 112 | 120 | 128
@@ -26,6 +26,7 @@ export interface AeadCipher {
   decrypt(data: Sealed, options: GcmOperationOptions): Promise<Uint8Array>
   encryptSync(data: Data, options: GcmOperationOptions): Sealed
   decryptSync(data: Sealed, options: GcmOperationOptions): Uint8Array
+  dispose(): void
 }
 
 class GHash {
@@ -136,7 +137,7 @@ function operationBytes(options: GcmOperationOptions): {
 export function gcm(
   key: Binary,
   options: GcmOptions = {},
-): AeadCipher {
+): AeadCipher & Disposal {
   const secret = keyBytes(key)
 
   if (
@@ -155,9 +156,17 @@ export function gcm(
 
   const tagLength = tagBits / 8
   const native = nativeGcm(secret)
-  const prepareWasm = lazy(() => createAesWasm(secret))
+  let instance: ReturnType<typeof createAesWasm>
+  const prepareWasm = lazy(() => (instance = createAesWasm(secret)))
   let block: AesBlock | undefined
-  let hashKey: Uint8Array<ArrayBuffer>
+  let hashKey: Uint8Array<ArrayBuffer> | undefined
+  const life = lifecycle('AES-GCM cipher', () => {
+    secret.fill(0)
+    hashKey?.fill(0)
+    instance?.dispose()
+    block?.clear()
+  })
+  const guard = life.check
 
   function prepare(): AesBlock {
     if (block !== undefined) {
@@ -179,7 +188,7 @@ export function gcm(
       return j0
     }
 
-    return new GHash(hashKey).update(nonce).finish(0, nonce.length)
+    return new GHash(hashKey!).update(nonce).finish(0, nonce.length)
   }
 
   function authenticationTag(
@@ -188,7 +197,7 @@ export function gcm(
     j0: Uint8Array,
   ): Uint8Array<ArrayBuffer> {
     const cipher = prepare()
-    const hash = new GHash(hashKey)
+    const hash = new GHash(hashKey!)
       .update(aad)
       .update(ciphertext)
       .finish(aad.length, ciphertext.length)
@@ -256,8 +265,10 @@ export function gcm(
     return transform(ciphertext, j0)
   }
 
-  return {
+  return disposable<AeadCipher>({
     async encrypt(data, options) {
+      life.check()
+
       const view = operationBytes(options)
       const useNative = native.available(view.nonce)
       const input = useNative ? toBytes(data) : toBytesView(data)
@@ -268,6 +279,8 @@ export function gcm(
       if (useNative) {
         const result = await native.encrypt(nonce, input, aad, tagLength)
 
+        guard()
+
         if (result !== undefined) {
           return result
         }
@@ -277,7 +290,7 @@ export function gcm(
 
       if (wasm) {
         if (input.length + aad.length > SLICE) {
-          return wasm.encryptGcmAsync(input, nonce, aad, tagLength)
+          return wasm.encryptGcmAsync(input, nonce, aad, tagLength, guard)
         }
 
         return wasm.encryptGcm(input, nonce, aad, tagLength)
@@ -287,6 +300,8 @@ export function gcm(
     },
 
     async decrypt(data, options) {
+      life.check()
+
       if (data === null || typeof data !== 'object') {
         throw new InvalidInputError('AES-GCM requires ciphertext and tag')
       }
@@ -307,6 +322,8 @@ export function gcm(
       if (useNative) {
         const result = await native.decrypt(nonce, ciphertext, aad, tag)
 
+        guard()
+
         if (result !== undefined) {
           return result
         }
@@ -316,7 +333,7 @@ export function gcm(
 
       if (wasm) {
         if (ciphertext.length + aad.length > SLICE) {
-          return wasm.decryptGcmAsync(useNative ? ciphertext : ciphertext.slice(), nonce, aad, tag)
+          return wasm.decryptGcmAsync(useNative ? ciphertext : ciphertext.slice(), nonce, aad, tag, guard)
         }
 
         return wasm.decryptGcm(ciphertext, nonce, aad, tag)
@@ -326,6 +343,8 @@ export function gcm(
     },
 
     encryptSync(data, options) {
+      life.check()
+
       const { nonce, aad } = operationBytes(options)
       const input = toBytesView(data)
       checkLength(input.length)
@@ -342,6 +361,8 @@ export function gcm(
     },
 
     decryptSync(data, options) {
+      life.check()
+
       if (data === null || typeof data !== 'object') {
         throw new InvalidInputError('AES-GCM requires ciphertext and tag')
       }
@@ -366,5 +387,7 @@ export function gcm(
 
       return wasm ? wasm.decryptGcm(ciphertext, nonce, aad, tag) : open(ciphertext, nonce, aad, tag)
     },
-  }
+
+    dispose: life.dispose,
+  })
 }

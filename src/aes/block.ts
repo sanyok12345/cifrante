@@ -1,6 +1,6 @@
 import { toBinary, toBinaryView } from '../bytes.js'
 import { InvalidInputError, InvalidIVError, InvalidKeyError } from '../errors.js'
-import type { Binary } from '../types.js'
+import type { Binary, Disposal } from '../types.js'
 import type { CipherOptions } from './aes.js'
 
 function multiply(a: number, b: number): number {
@@ -96,6 +96,35 @@ export function ivBytes(options: CipherOptions, length: number, copy = true): Ui
   return bytes
 }
 
+export function lifecycle(name: string, release: () => void) {
+  let disposed = false
+
+  return {
+    check(): void {
+      if (disposed) {
+        throw new InvalidInputError(`${name} has been disposed`)
+      }
+    },
+
+    dispose(): void {
+      if (!disposed) {
+        disposed = true
+        release()
+      }
+    },
+  }
+}
+
+export function disposable<T extends { dispose(): void }>(target: T): T & Disposal {
+  const key = (Symbol as { dispose?: symbol }).dispose
+
+  if (typeof key === 'symbol') {
+    Object.defineProperty(target, key, { value: target.dispose, configurable: true })
+  }
+
+  return target as T & Disposal
+}
+
 export function outputBytes(
   output: unknown,
   input: Uint8Array,
@@ -173,6 +202,10 @@ export class AesBlock {
         this.schedule[offset + i] = this.schedule[offset + i - key.length] ^ word[i]
       }
     }
+  }
+
+  clear(): void {
+    this.schedule.fill(0)
   }
 
   encrypt(input: Uint8Array): Uint8Array<ArrayBuffer> {
