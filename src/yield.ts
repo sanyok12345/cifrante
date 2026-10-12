@@ -1,4 +1,6 @@
 export const SLICE = 2 ** 21
+export const OFFLOAD = 2 ** 20
+export const OFFLOAD_SLICE = 2 ** 23
 export const PBKDF2_SLICE = 2 ** 16
 
 type Scheduler = { yield?: () => Promise<void> }

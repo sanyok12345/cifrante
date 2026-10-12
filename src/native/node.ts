@@ -25,6 +25,13 @@ import {
   UnsupportedError,
 } from '../errors.js'
 import { lazy } from '../lazy.js'
+import { OFFLOAD } from '../yield.js'
+import {
+  nativeCipher as webCipher,
+  nativeDigest as webDigest,
+  nativeGcm as webGcm,
+  nativeMac as webMac,
+} from './web.js'
 import { rsaJwk } from '../rsa-key.js'
 import type {
   NativeAead,
@@ -161,6 +168,14 @@ export async function nativeDigest(
     return undefined
   }
 
+  if (data.length >= OFFLOAD) {
+    const offloaded = await webDigest(name, data)
+
+    if (offloaded !== undefined) {
+      return offloaded
+    }
+  }
+
   const digest = Reflect.get(crypto, 'hash') as typeof crypto.hash | undefined
   const result = typeof digest === 'function'
     ? digest(name, data, 'buffer')
@@ -176,6 +191,14 @@ export async function nativeMac(
 ): Promise<Uint8Array | undefined> {
   if (!supportsHash(name)) {
     return undefined
+  }
+
+  if (data.length >= OFFLOAD && key.length > 0) {
+    const offloaded = await webMac(name, key, data)
+
+    if (offloaded !== undefined) {
+      return offloaded
+    }
   }
 
   return new Uint8Array(createHmac(name, key).update(data).digest())
@@ -256,6 +279,17 @@ export function nativeCipher(
 ): NativeCipher {
   const name = `aes-${key.length * 8}-${mode}`
   const prepare = lazy(() => supportsCipher(name) ? createSecretKey(key) : undefined)
+  const web = webCipher(mode, key)
+
+  async function offload<T>(
+    data: Uint8Array,
+    operation: () => Promise<T | undefined> | undefined,
+    fallback: () => T | undefined,
+  ): Promise<T | undefined> {
+    const result = data.length >= OFFLOAD && web.available() ? await operation() : undefined
+
+    return result ?? fallback()
+  }
 
   function operate(
     iv: Uint8Array,
@@ -323,12 +357,12 @@ export function nativeCipher(
   return {
     available: () => supportsCipher(name),
     stream,
-    encrypt: async (iv, data) => operate(iv, data, false),
-    decrypt: async (iv, data) => operate(iv, data, true),
+    encrypt: (iv, data) => offload(data, () => web.encrypt(iv, data), () => operate(iv, data, false)),
+    decrypt: (iv, data) => offload(data, () => web.decrypt(iv, data), () => operate(iv, data, true)),
     encryptSync: (iv, data) => operate(iv, data, false),
     decryptSync: (iv, data) => operate(iv, data, true),
-    encryptBlocks: async (iv, data) => blocks(iv, data, false),
-    decryptBlocks: async (iv, data) => blocks(iv, data, true),
+    encryptBlocks: (iv, data) => offload(data, () => web.encryptBlocks?.(iv, data), () => blocks(iv, data, false)),
+    decryptBlocks: (iv, data) => offload(data, () => web.decryptBlocks?.(iv, data), () => blocks(iv, data, true)),
     encryptBlocksSync: (iv, data) => blocks(iv, data, false),
     decryptBlocksSync: (iv, data) => blocks(iv, data, true),
   }
@@ -337,6 +371,7 @@ export function nativeCipher(
 export function nativeGcm(key: Uint8Array): NativeAead {
   const name = `aes-${key.length * 8}-gcm` as 'aes-128-gcm'
   const prepare = lazy(() => supportsCipher(name) ? createSecretKey(key) : undefined)
+  const web = webGcm(key)
 
   function seal(
     nonce: Uint8Array,
@@ -389,8 +424,20 @@ export function nativeGcm(key: Uint8Array): NativeAead {
 
   return {
     available: (nonce) => supportsCipher(name) && nonce.length <= 128,
-    encrypt: async (nonce, data, aad, tagLength) => seal(nonce, data, aad, tagLength),
-    decrypt: async (nonce, data, aad, tag) => open(nonce, data, aad, tag),
+    async encrypt(nonce, data, aad, tagLength) {
+      const offloaded = data.length + aad.length >= OFFLOAD && web.available(nonce)
+        ? await web.encrypt(nonce, data, aad, tagLength)
+        : undefined
+
+      return offloaded ?? seal(nonce, data, aad, tagLength)
+    },
+    async decrypt(nonce, data, aad, tag) {
+      const offloaded = data.length + aad.length >= OFFLOAD && web.available(nonce)
+        ? await web.decrypt(nonce, data, aad, tag)
+        : undefined
+
+      return offloaded ?? open(nonce, data, aad, tag)
+    },
     encryptSync: seal,
     decryptSync: open,
   }
