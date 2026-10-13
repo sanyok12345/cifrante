@@ -1,17 +1,17 @@
 import { toBinary, toBinaryView, toBytes, toBytesView } from '../bytes.js'
 import { AuthenticationError, InvalidInputError, InvalidNonceError } from '../errors.js'
 import { lazy } from '../lazy.js'
-import { SLICE } from '../yield.js'
+import { SLICE, watch } from '../yield.js'
 import { createAesWasm } from '../wasm/aes.js'
 import { nativeGcm } from '../native/web.js'
-import type { Binary, Data, Disposal } from '../types.js'
+import type { AbortOptions, Binary, Data, Disposal } from '../types.js'
 import { AesBlock, disposable, keyBytes, lifecycle } from './block.js'
 
 export interface GcmOptions {
   tagLength?: 96 | 104 | 112 | 120 | 128
 }
 
-export interface GcmOperationOptions {
+export interface GcmOperationOptions extends AbortOptions {
   nonce: Binary
   aad?: Data
 }
@@ -166,7 +166,6 @@ export function gcm(
     instance?.dispose()
     block?.clear()
   })
-  const guard = life.check
 
   function prepare(): AesBlock {
     if (block !== undefined) {
@@ -267,7 +266,9 @@ export function gcm(
 
   return disposable<AeadCipher>({
     async encrypt(data, options) {
-      life.check()
+      const guard = watch(options, life.check)
+
+      guard()
 
       const view = operationBytes(options)
       const useNative = native.available(view.nonce)
@@ -300,7 +301,9 @@ export function gcm(
     },
 
     async decrypt(data, options) {
-      life.check()
+      const guard = watch(options, life.check)
+
+      guard()
 
       if (data === null || typeof data !== 'object') {
         throw new InvalidInputError('AES-GCM requires ciphertext and tag')
@@ -343,7 +346,7 @@ export function gcm(
     },
 
     encryptSync(data, options) {
-      life.check()
+      watch(options, life.check)()
 
       const { nonce, aad } = operationBytes(options)
       const input = toBytesView(data)
@@ -361,7 +364,7 @@ export function gcm(
     },
 
     decryptSync(data, options) {
-      life.check()
+      watch(options, life.check)()
 
       if (data === null || typeof data !== 'object') {
         throw new InvalidInputError('AES-GCM requires ciphertext and tag')

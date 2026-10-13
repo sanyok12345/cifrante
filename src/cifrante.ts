@@ -31,7 +31,7 @@ export {
   AuthenticationError,
 }
 
-export type { Bytes, Binary, Data } from './types.js'
+export type { Bytes, Binary, Data, AbortOptions, AbortSignalLike } from './types.js'
 export type { Random } from './random.js'
 export type { Codec, Utf8Codec, BytesAPI } from './bytes.js'
 export type { Hash, HashState } from './hash/hash.js'

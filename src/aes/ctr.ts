@@ -4,7 +4,7 @@ import { lazy } from '../lazy.js'
 import { createAesWasm } from '../wasm/aes.js'
 import { nativeAddon, nativeCipher } from '../native/web.js'
 import type { Binary, Disposal } from '../types.js'
-import { CHUNK, SLICE, pacer } from '../yield.js'
+import { CHUNK, SLICE, pacer, watch } from '../yield.js'
 import type { CipherOptions, CtrCipher, CtrState } from './aes.js'
 import { AesBlock, deliver, disposable, fit, ivBytes, keyBytes, lifecycle, outputBytes } from './block.js'
 
@@ -32,7 +32,6 @@ export function ctr(key: Binary): CtrCipher & Disposal {
     instance?.dispose()
     block?.clear()
   })
-  const guard = life.check
 
   function counter(initial: Uint8Array): Uint8Array<ArrayBuffer> {
     const state = new Uint8Array(33)
@@ -120,6 +119,7 @@ export function ctr(key: Binary): CtrCipher & Disposal {
     data: Uint8Array,
     initial: Uint8Array,
     target: Uint8Array | undefined,
+    guard: () => void,
   ): Promise<Uint8Array> {
     const output = target ? fit(target, data.length) : new Uint8Array(data.length)
     const state = hardware(initial)
@@ -180,9 +180,10 @@ export function ctr(key: Binary): CtrCipher & Disposal {
     decrypt: boolean,
     target: Uint8Array | undefined,
     useNative: boolean,
+    guard: () => void,
   ): Promise<Uint8Array> {
     if (accelerated) {
-      return data.length <= SLICE ? keystream(data, initial, target) : keystreamAsync(data, initial, target)
+      return data.length <= SLICE ? keystream(data, initial, target) : keystreamAsync(data, initial, target, guard)
     }
 
     if (useNative) {
@@ -225,9 +226,12 @@ export function ctr(key: Binary): CtrCipher & Disposal {
   }
 
   function operation(view: Uint8Array, options: CipherOptions, copy: boolean) {
-    life.check()
+    const guard = watch(options, life.check)
+
+    guard()
 
     return {
+      guard,
       input: copy ? Uint8Array.from(view) : view,
       initial: ivBytes(options, 16, copy),
       target: outputBytes(options.output, view, view.length),
@@ -237,14 +241,14 @@ export function ctr(key: Binary): CtrCipher & Disposal {
   return disposable<CtrCipher>({
     async encrypt(data, options) {
       const useNative = !accelerated && native.available()
-      const { input, initial, target } = operation(toBytesView(data), options, useNative)
-      return transformAsync(input, initial, false, target, useNative)
+      const { input, initial, target, guard } = operation(toBytesView(data), options, useNative)
+      return transformAsync(input, initial, false, target, useNative, guard)
     },
 
     async decrypt(data, options) {
       const useNative = !accelerated && native.available()
-      const { input, initial, target } = operation(toBinaryView(data), options, useNative)
-      return transformAsync(input, initial, true, target, useNative)
+      const { input, initial, target, guard } = operation(toBinaryView(data), options, useNative)
+      return transformAsync(input, initial, true, target, useNative, guard)
     },
 
     encryptSync(data, options) {
@@ -258,7 +262,7 @@ export function ctr(key: Binary): CtrCipher & Disposal {
     },
 
     create(options) {
-      life.check()
+      watch(options, life.check)()
 
       const state = stream(ivBytes(options, 16))
       let disposed = false

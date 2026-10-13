@@ -4,7 +4,7 @@ import { lazy } from '../lazy.js'
 import { nativeAddon, nativeCipher } from '../native/web.js'
 import type { Binary, Disposal } from '../types.js'
 import { createAesWasm } from '../wasm/aes.js'
-import { OFFLOAD_SLICE, SLICE } from '../yield.js'
+import { OFFLOAD_SLICE, SLICE, watch } from '../yield.js'
 import type { Cipher, CipherOptions } from './aes.js'
 import { AesBlock, disposable, fit, ivBytes, keyBytes, lifecycle, outputBytes } from './block.js'
 
@@ -110,7 +110,6 @@ export function ige(key: Binary): Cipher & Disposal {
     instance?.dispose()
     block?.clear()
   })
-  const guard = life.check
 
   function validate(data: Uint8Array): void {
     if (data.length % 16 !== 0) {
@@ -185,7 +184,8 @@ export function ige(key: Binary): Cipher & Disposal {
     data: Uint8Array,
     initial: Uint8Array,
     decrypt: boolean,
-    target?: Uint8Array,
+    target: Uint8Array | undefined,
+    guard: () => void,
   ): Promise<Uint8Array> {
     const output = target ?? new Uint8Array(data.length)
 
@@ -222,6 +222,7 @@ export function ige(key: Binary): Cipher & Disposal {
     initial: Uint8Array,
     target: Uint8Array | undefined,
     encryptBlocks: (iv: Uint8Array, blocks: Uint8Array) => Promise<Uint8Array | undefined>,
+    guard: () => void,
   ): Promise<Uint8Array | undefined> {
     const output = target ?? new Uint8Array(data.length)
     let chain: Uint8Array = initial.slice(0, 16)
@@ -284,6 +285,7 @@ export function ige(key: Binary): Cipher & Disposal {
     data: Uint8Array,
     initial: Uint8Array,
     target: Uint8Array | undefined,
+    guard: () => void,
   ): Promise<Uint8Array | undefined> | Uint8Array | undefined {
     if (native.encryptBlocksSync && data.length <= SLICE) {
       return encryptCbcSync(data, initial, target)
@@ -295,7 +297,7 @@ export function ige(key: Binary): Cipher & Disposal {
       return undefined
     }
 
-    return encryptCbc(data, initial, target, native.encryptBlocks)
+    return encryptCbc(data, initial, target, native.encryptBlocks, guard)
   }
 
   function transform(
@@ -333,6 +335,7 @@ export function ige(key: Binary): Cipher & Disposal {
     initial: Uint8Array,
     decrypt: boolean,
     target: Uint8Array | undefined,
+    guard: () => void,
   ): Promise<Uint8Array> {
     validate(data)
 
@@ -341,11 +344,11 @@ export function ige(key: Binary): Cipher & Disposal {
     }
 
     if (accelerated) {
-      return fit(await accelerateAsync(data, initial, decrypt, target), data.length)
+      return fit(await accelerateAsync(data, initial, decrypt, target, guard), data.length)
     }
 
     if (!decrypt) {
-      const output = await encryptCbcAsync(data, initial, target)
+      const output = await encryptCbcAsync(data, initial, target, guard)
 
       guard()
 
@@ -369,24 +372,26 @@ export function ige(key: Binary): Cipher & Disposal {
   function run<T>(
     data: Uint8Array,
     options: CipherOptions,
-    operation: (input: Uint8Array, initial: Uint8Array, target: Uint8Array | undefined) => T,
+    operation: (input: Uint8Array, initial: Uint8Array, target: Uint8Array | undefined, guard: () => void) => T,
   ): T {
-    life.check()
+    const guard = watch(options, life.check)
+
+    guard()
 
     const initial = ivBytes(options, 32, false)
 
-    return operation(data, initial, outputBytes(options.output, data, data.length))
+    return operation(data, initial, outputBytes(options.output, data, data.length), guard)
   }
 
   return disposable<Cipher>({
     async encrypt(data, options) {
-      return run(toBytesView(data), options, (input, initial, target) =>
-        transformAsync(input, initial, false, target))
+      return run(toBytesView(data), options, (input, initial, target, guard) =>
+        transformAsync(input, initial, false, target, guard))
     },
 
     async decrypt(data, options) {
-      return run(toBinaryView(data), options, (input, initial, target) =>
-        transformAsync(input, initial, true, target))
+      return run(toBinaryView(data), options, (input, initial, target, guard) =>
+        transformAsync(input, initial, true, target, guard))
     },
 
     encryptSync(data, options) {

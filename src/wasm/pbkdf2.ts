@@ -114,6 +114,7 @@ export async function pbkdf2WasmAsync(
   salt: Uint8Array,
   iterations: number,
   length: number,
+  guard?: () => void,
 ): Promise<Uint8Array | undefined> {
   const context = prepare()
 
@@ -135,7 +136,7 @@ export async function pbkdf2WasmAsync(
     engine.clear()
   }
 
-  const pace = pacer()
+  const pace = pacer(guard)
 
   async function pause(): Promise<void> {
     if (pace.due()) {

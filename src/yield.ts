@@ -1,3 +1,6 @@
+import { InvalidInputError } from './errors.js'
+import type { AbortSignalLike } from './types.js'
+
 export const SLICE = 2 ** 21
 export const CHUNK = 2 ** 18
 export const OFFLOAD = 2 ** 20
@@ -68,5 +71,23 @@ export async function forEachChunk(
     if (offset + CHUNK < data.length && pace.due()) {
       await pace.pause()
     }
+  }
+}
+
+export function watch(options: unknown, check: () => void = () => {}): () => void {
+  const signal = options !== null && typeof options === 'object'
+    ? (options as { signal?: unknown }).signal
+    : undefined
+
+  if (
+    signal !== undefined &&
+    (signal === null || typeof (signal as AbortSignalLike).throwIfAborted !== 'function')
+  ) {
+    throw new InvalidInputError('signal must be an AbortSignal')
+  }
+
+  return () => {
+    check()
+    ;(signal as AbortSignalLike | undefined)?.throwIfAborted()
   }
 }

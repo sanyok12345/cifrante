@@ -5,13 +5,13 @@ import { sha1Sync } from './hash/sha1.js'
 import { sha256Sync } from './hash/sha256.js'
 import { sha512Sync } from './hash/sha512.js'
 import { nativeHmac, nativeMac, nativeMacAvailable } from './native/web.js'
-import type { Binary, Data } from './types.js'
-import { SLICE, forEachChunk } from './yield.js'
+import type { AbortOptions, Binary, Data } from './types.js'
+import { SLICE, forEachChunk, watch } from './yield.js'
 
 export interface Hmac {
-  (key: Binary, data: Data): Promise<Uint8Array>
-  verify(key: Binary, data: Data, mac: Binary): Promise<boolean>
-  hex(key: Binary, data: Data): Promise<string>
+  (key: Binary, data: Data, options?: AbortOptions): Promise<Uint8Array>
+  verify(key: Binary, data: Data, mac: Binary, options?: AbortOptions): Promise<boolean>
+  hex(key: Binary, data: Data, options?: AbortOptions): Promise<string>
   create(key: Binary): HmacState
   sync: SyncHmac
 }
@@ -104,6 +104,7 @@ export async function macAsync(
   sync: SyncHmac,
   key: Uint8Array,
   input: Uint8Array,
+  guard?: () => void,
 ): Promise<Uint8Array> {
   if (input.length <= SLICE) {
     return sync(key, input)
@@ -113,39 +114,46 @@ export async function macAsync(
 
   await forEachChunk(input, (chunk) => {
     state.update(chunk)
-  })
+  }, guard)
 
   return state.digest()
 }
 
 function createHmac(name: string, sync: SyncHmac): Hmac {
   const create = (key: Binary): HmacState => new State(sync.create(key))
-  const mac = async (key: Binary, data: Data): Promise<Uint8Array> => {
+  const mac = async (key: Binary, data: Data, options?: AbortOptions): Promise<Uint8Array> => {
+    const guard = watch(options)
+
+    guard()
+
     const value = toBinary(key)
 
     try {
       if (!nativeMacAvailable(name, value)) {
         const input = toBytesView(data)
 
-        return await macAsync(sync, value, input)
+        return await macAsync(sync, value, input, guard)
       }
 
       const input = toBytes(data)
       const native = await nativeMac(name, value, input)
 
-      return native === undefined ? await macAsync(sync, value, input) : native
+      guard()
+
+      return native === undefined ? await macAsync(sync, value, input, guard) : native
     } finally {
       value.fill(0)
     }
   }
 
   return Object.assign(mac, {
-    verify: async (key: Binary, data: Data, signature: Binary): Promise<boolean> => {
+    verify: async (key: Binary, data: Data, signature: Binary, options?: AbortOptions): Promise<boolean> => {
       const expected = toBinary(signature)
 
-      return equalBinary(await mac(key, data), expected)
+      return equalBinary(await mac(key, data, options), expected)
     },
-    hex: async (key: Binary, data: Data): Promise<string> => encodeHex(await mac(key, data)),
+    hex: async (key: Binary, data: Data, options?: AbortOptions): Promise<string> =>
+      encodeHex(await mac(key, data, options)),
     create,
     sync,
   })

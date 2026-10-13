@@ -3,19 +3,19 @@ import { InvalidInputError, UnsupportedError } from './errors.js'
 import { hmacSha1Sync, hmacSha256Sync, hmacSha512Sync, macAsync } from './hmac.js'
 import type { SyncHmac } from './hmac.js'
 import { nativeHkdf, nativePbkdf2 } from './native/web.js'
-import type { Data } from './types.js'
+import type { AbortOptions, Data } from './types.js'
 import { pbkdf2Wasm, pbkdf2WasmAsync } from './wasm/pbkdf2.js'
-import { PBKDF2_SLICE, SLICE, pacer } from './yield.js'
+import { PBKDF2_SLICE, SLICE, pacer, watch } from './yield.js'
 
 export type HashName = 'sha1' | 'sha256' | 'sha512'
 
-export interface Pbkdf2Options {
+export interface Pbkdf2Options extends AbortOptions {
   hash?: HashName
   iterations: number
   length: number
 }
 
-export interface HkdfOptions {
+export interface HkdfOptions extends AbortOptions {
   hash?: HashName
   salt?: Data
   info?: Data
@@ -57,6 +57,10 @@ async function pbkdf2(password: Data, salt: Data, options: Pbkdf2Options): Promi
     throw new InvalidInputError('PBKDF2 options are required')
   }
 
+  const guard = watch(options)
+
+  guard()
+
   const { name, size, mac } = resolveHash(options.hash)
   const { iterations, length } = options
 
@@ -80,12 +84,14 @@ async function pbkdf2(password: Data, salt: Data, options: Pbkdf2Options): Promi
 
     const native = await nativePbkdf2(name, key, saltBytes, iterations, length)
 
+    guard()
+
     if (native !== undefined) {
       return Uint8Array.from(native)
     }
 
     const wasm = iterations > PBKDF2_SLICE || key.length + saltBytes.length > SLICE
-      ? await pbkdf2WasmAsync(name, key, saltBytes, iterations, length)
+      ? await pbkdf2WasmAsync(name, key, saltBytes, iterations, length, guard)
       : pbkdf2Wasm(name, key, saltBytes, iterations, length)
 
     if (wasm !== undefined) {
@@ -104,7 +110,7 @@ async function pbkdf2(password: Data, salt: Data, options: Pbkdf2Options): Promi
         .update(counter)
         .digest()
       const block = Uint8Array.from(u)
-      const pace = pacer()
+      const pace = pacer(guard)
 
       for (let round = 1; round < iterations; round++) {
         const next = mac(key, u)
@@ -137,6 +143,10 @@ async function hkdf(input: Data, options: HkdfOptions): Promise<Uint8Array> {
     throw new InvalidInputError('HKDF options are required')
   }
 
+  const guard = watch(options)
+
+  guard()
+
   const { name, size, mac } = resolveHash(options.hash)
   const { length } = options
 
@@ -161,12 +171,14 @@ async function hkdf(input: Data, options: HkdfOptions): Promise<Uint8Array> {
 
     const native = await nativeHkdf(name, key, salt, info, length)
 
+    guard()
+
     if (native !== undefined) {
       return Uint8Array.from(native)
     }
 
     const output = new Uint8Array(length)
-    const prk = key.length > SLICE ? await macAsync(mac, salt, key) : mac(salt, key)
+    const prk = key.length > SLICE ? await macAsync(mac, salt, key, guard) : mac(salt, key)
     let previous: Uint8Array = new Uint8Array()
     const counter = new Uint8Array(1)
 

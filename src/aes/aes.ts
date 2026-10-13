@@ -1,4 +1,4 @@
-import type { Binary, Data, Disposal } from '../types.js'
+import type { AbortOptions, Binary, Data, Disposal } from '../types.js'
 import { cbc } from './cbc.js'
 import type { CbcOptions } from './cbc.js'
 import { ctr } from './ctr.js'
@@ -6,7 +6,7 @@ import { gcm } from './gcm.js'
 import type { AeadCipher, GcmOptions } from './gcm.js'
 import { ige } from './ige.js'
 
-export interface CipherOptions {
+export interface CipherOptions extends AbortOptions {
   iv: Binary
   output?: Uint8Array
 }

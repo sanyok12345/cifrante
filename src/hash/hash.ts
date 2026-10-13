@@ -2,13 +2,13 @@ import { encodeBase64, encodeHex, toBytesView } from '../bytes.js'
 import { InvalidInputError } from '../errors.js'
 import { nativeDigest, nativeDigestAvailable, nativeDigestSync, nativeHash } from '../native/web.js'
 import type { WasmHashFactory } from '../wasm/hash.js'
-import { SLICE, forEachChunk } from '../yield.js'
-import type { Data } from '../types.js'
+import { SLICE, forEachChunk, watch } from '../yield.js'
+import type { AbortOptions, Data } from '../types.js'
 
 export interface Hash {
-  (data: Data): Promise<Uint8Array>
-  hex(data: Data): Promise<string>
-  base64(data: Data): Promise<string>
+  (data: Data, options?: AbortOptions): Promise<Uint8Array>
+  hex(data: Data, options?: AbortOptions): Promise<string>
+  base64(data: Data, options?: AbortOptions): Promise<string>
   create(): HashState
   sync: SyncHash
 }
@@ -142,7 +142,11 @@ export function createSyncHash(
   return Object.assign(hash, { create })
 }
 
-export async function digestAsync(sync: SyncHash, input: Uint8Array): Promise<Uint8Array> {
+export async function digestAsync(
+  sync: SyncHash,
+  input: Uint8Array,
+  guard?: () => void,
+): Promise<Uint8Array> {
   if (input.length <= SLICE) {
     return sync(input)
   }
@@ -151,29 +155,35 @@ export async function digestAsync(sync: SyncHash, input: Uint8Array): Promise<Ui
 
   await forEachChunk(input, (chunk) => {
     state.update(chunk)
-  })
+  }, guard)
 
   return state.digest()
 }
 
 export function createHash(name: string, sync: SyncHash): Hash {
   const create = (): HashState => new State(sync.create())
-  const hash = async (data: Data): Promise<Uint8Array> => {
+  const hash = async (data: Data, options?: AbortOptions): Promise<Uint8Array> => {
+    const guard = watch(options)
+
+    guard()
+
     const input = toBytesView(data)
 
     if (!nativeDigestAvailable(name)) {
-      return digestAsync(sync, input)
+      return digestAsync(sync, input, guard)
     }
 
     const copy = typeof data === 'string' ? input : Uint8Array.from(input)
     const native = await nativeDigest(name, copy)
 
-    return native === undefined ? digestAsync(sync, copy) : native
+    guard()
+
+    return native === undefined ? digestAsync(sync, copy, guard) : native
   }
 
   return Object.assign(hash, {
-    hex: async (data: Data): Promise<string> => encodeHex(await hash(data)),
-    base64: async (data: Data): Promise<string> => encodeBase64(await hash(data)),
+    hex: async (data: Data, options?: AbortOptions): Promise<string> => encodeHex(await hash(data, options)),
+    base64: async (data: Data, options?: AbortOptions): Promise<string> => encodeBase64(await hash(data, options)),
     create,
     sync,
   })
