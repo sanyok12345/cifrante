@@ -4,7 +4,7 @@ import { lazy } from '../lazy.js'
 import { createAesWasm } from '../wasm/aes.js'
 import { nativeAddon, nativeCipher } from '../native/web.js'
 import type { Binary, Disposal } from '../types.js'
-import { SLICE } from '../yield.js'
+import { CHUNK, SLICE, pacer } from '../yield.js'
 import type { CipherOptions, CtrCipher, CtrState } from './aes.js'
 import { AesBlock, deliver, disposable, fit, ivBytes, keyBytes, lifecycle, outputBytes } from './block.js'
 
@@ -116,6 +116,33 @@ export function ctr(key: Binary): CtrCipher & Disposal {
     }
   }
 
+  async function keystreamAsync(
+    data: Uint8Array,
+    initial: Uint8Array,
+    target: Uint8Array | undefined,
+  ): Promise<Uint8Array> {
+    const output = target ? fit(target, data.length) : new Uint8Array(data.length)
+    const state = hardware(initial)
+    const pace = pacer(guard)
+
+    try {
+      for (let offset = 0; offset < data.length; offset += CHUNK) {
+        state.update(data.subarray(offset, offset + CHUNK), output.subarray(offset, offset + CHUNK))
+
+        if (offset + CHUNK < data.length && pace.due()) {
+          await pace.pause()
+        }
+      }
+
+      return output
+    } catch (error) {
+      output.fill(0)
+      throw error
+    } finally {
+      state.dispose()
+    }
+  }
+
   function stream(initial: Uint8Array): Stream {
     if (accelerated) {
       return hardware(initial)
@@ -155,7 +182,7 @@ export function ctr(key: Binary): CtrCipher & Disposal {
     useNative: boolean,
   ): Promise<Uint8Array> {
     if (accelerated) {
-      return keystream(data, initial, target)
+      return data.length <= SLICE ? keystream(data, initial, target) : keystreamAsync(data, initial, target)
     }
 
     if (useNative) {

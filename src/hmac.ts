@@ -6,7 +6,7 @@ import { sha256Sync } from './hash/sha256.js'
 import { sha512Sync } from './hash/sha512.js'
 import { nativeHmac, nativeMac, nativeMacAvailable } from './native/web.js'
 import type { Binary, Data } from './types.js'
-import { SLICE, forEachSlice } from './yield.js'
+import { SLICE, forEachChunk } from './yield.js'
 
 export interface Hmac {
   (key: Binary, data: Data): Promise<Uint8Array>
@@ -111,8 +111,8 @@ export async function macAsync(
 
   const state = sync.create(key)
 
-  await forEachSlice(input, SLICE, (slice) => {
-    state.update(slice)
+  await forEachChunk(input, (chunk) => {
+    state.update(chunk)
   })
 
   return state.digest()

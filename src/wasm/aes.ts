@@ -1,5 +1,5 @@
 import { AuthenticationError, CifranteError } from '../errors.js'
-import { SLICE, yieldNow } from '../yield.js'
+import { CHUNK, pacer } from '../yield.js'
 import { wasm } from './module.js'
 import portable from '../../build/wasm/aes.wasm'
 import simd from '../../build/wasm/aes.simd.wasm'
@@ -153,14 +153,15 @@ export function createAesWasm(key: Uint8Array) {
     output: Uint8Array | undefined,
     guard: () => void,
   ): Promise<void> {
-    for (let offset = 0; offset < data.length; offset += SLICE) {
-      const slice = data.subarray(offset, offset + SLICE)
+    const pace = pacer(guard)
 
-      step(working, () => update(slice, operation, output?.subarray(offset)))
+    for (let offset = 0; offset < data.length; offset += CHUNK) {
+      const chunk = data.subarray(offset, offset + CHUNK)
 
-      if (offset + SLICE < data.length) {
-        await yieldNow()
-        guard()
+      step(working, () => update(chunk, operation, output?.subarray(offset)))
+
+      if (offset + CHUNK < data.length && pace.due()) {
+        await pace.pause()
       }
     }
   }

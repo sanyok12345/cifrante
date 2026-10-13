@@ -5,7 +5,7 @@ import type { SyncHmac } from './hmac.js'
 import { nativeHkdf, nativePbkdf2 } from './native/web.js'
 import type { Data } from './types.js'
 import { pbkdf2Wasm, pbkdf2WasmAsync } from './wasm/pbkdf2.js'
-import { PBKDF2_SLICE, SLICE, yieldNow } from './yield.js'
+import { PBKDF2_SLICE, SLICE, pacer } from './yield.js'
 
 export type HashName = 'sha1' | 'sha256' | 'sha512'
 
@@ -104,6 +104,7 @@ async function pbkdf2(password: Data, salt: Data, options: Pbkdf2Options): Promi
         .update(counter)
         .digest()
       const block = Uint8Array.from(u)
+      const pace = pacer()
 
       for (let round = 1; round < iterations; round++) {
         const next = mac(key, u)
@@ -115,8 +116,8 @@ async function pbkdf2(password: Data, salt: Data, options: Pbkdf2Options): Promi
           block[i] ^= u[i]
         }
 
-        if (round % PBKDF2_SLICE === 0) {
-          await yieldNow()
+        if ((round & 255) === 0 && pace.due()) {
+          await pace.pause()
         }
       }
 

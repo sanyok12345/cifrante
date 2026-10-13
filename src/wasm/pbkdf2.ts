@@ -1,6 +1,6 @@
 import { CifranteError, InvalidInputError } from '../errors.js'
 import { lazy } from '../lazy.js'
-import { PBKDF2_SLICE, SLICE, yieldNow } from '../yield.js'
+import { CHUNK, pacer } from '../yield.js'
 import { wasm } from './module.js'
 import type { HashName } from '../kdf.js'
 import source from '../../build/wasm/pbkdf2.wasm'
@@ -135,10 +135,14 @@ export async function pbkdf2WasmAsync(
     engine.clear()
   }
 
+  const pace = pacer()
+
   async function pause(): Promise<void> {
-    suspend()
-    await yieldNow()
-    restore()
+    if (pace.due()) {
+      suspend()
+      await pace.pause()
+      restore()
+    }
   }
 
   function update(data: Uint8Array, operation: (length: number) => number): void {
@@ -152,29 +156,29 @@ export async function pbkdf2WasmAsync(
   try {
     check(engine.init(algorithm, password.length > blockSize ? 1 : 0))
 
-    for (let offset = 0; offset < password.length; offset += SLICE) {
+    for (let offset = 0; offset < password.length; offset += CHUNK) {
       if (offset > 0) {
         await pause()
       }
 
-      update(password.subarray(offset, offset + SLICE), engine.password_update)
+      update(password.subarray(offset, offset + CHUNK), engine.password_update)
     }
 
     check(engine.password_finalize())
 
-    for (let offset = 0; offset < salt.length; offset += SLICE) {
+    for (let offset = 0; offset < salt.length; offset += CHUNK) {
       if (offset > 0) {
         await pause()
       }
 
-      update(salt.subarray(offset, offset + SLICE), engine.salt_update)
+      update(salt.subarray(offset, offset + CHUNK), engine.salt_update)
     }
 
     for (let index = 1, offset = 0; offset < length; index++, offset += size) {
       check(engine.derive_begin(index))
 
       for (let remaining = iterations - 1; remaining > 0;) {
-        const count = Math.min(remaining, PBKDF2_SLICE)
+        const count = Math.min(remaining, 1024)
 
         check(engine.derive_rounds(count, 0))
         remaining -= count

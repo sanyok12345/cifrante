@@ -2,7 +2,7 @@ import { encodeBase64, encodeHex, toBytesView } from '../bytes.js'
 import { InvalidInputError } from '../errors.js'
 import { nativeDigest, nativeDigestAvailable, nativeDigestSync, nativeHash } from '../native/web.js'
 import type { WasmHashFactory } from '../wasm/hash.js'
-import { SLICE, forEachSlice } from '../yield.js'
+import { SLICE, forEachChunk } from '../yield.js'
 import type { Data } from '../types.js'
 
 export interface Hash {
@@ -149,8 +149,8 @@ export async function digestAsync(sync: SyncHash, input: Uint8Array): Promise<Ui
 
   const state = sync.create()
 
-  await forEachSlice(input, SLICE, (slice) => {
-    state.update(slice)
+  await forEachChunk(input, (chunk) => {
+    state.update(chunk)
   })
 
   return state.digest()

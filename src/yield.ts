@@ -1,7 +1,14 @@
 export const SLICE = 2 ** 21
+export const CHUNK = 2 ** 18
 export const OFFLOAD = 2 ** 20
 export const OFFLOAD_SLICE = 2 ** 23
 export const PBKDF2_SLICE = 2 ** 16
+
+const BUDGET = 8
+
+const now = typeof performance !== 'undefined' && typeof performance.now === 'function'
+  ? () => performance.now()
+  : () => Date.now()
 
 type Scheduler = { yield?: () => Promise<void> }
 
@@ -32,16 +39,34 @@ export function yieldNow(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0))
 }
 
-export async function forEachSlice(
-  data: Uint8Array,
-  step: number,
-  operation: (slice: Uint8Array, offset: number) => void,
-): Promise<void> {
-  for (let offset = 0; offset < data.length; offset += step) {
-    operation(data.subarray(offset, offset + step), offset)
+export function pacer(guard: () => void = () => {}) {
+  let start = now()
 
-    if (offset + step < data.length) {
+  return {
+    due(): boolean {
+      return now() - start >= BUDGET
+    },
+
+    async pause(): Promise<void> {
       await yieldNow()
+      guard()
+      start = now()
+    },
+  }
+}
+
+export async function forEachChunk(
+  data: Uint8Array,
+  operation: (chunk: Uint8Array, offset: number) => void,
+  guard?: () => void,
+): Promise<void> {
+  const pace = pacer(guard)
+
+  for (let offset = 0; offset < data.length; offset += CHUNK) {
+    operation(data.subarray(offset, offset + CHUNK), offset)
+
+    if (offset + CHUNK < data.length && pace.due()) {
+      await pace.pause()
     }
   }
 }
