@@ -4,7 +4,7 @@ import { lazy } from '../lazy.js'
 import { nativeAddon, nativeCipher } from '../native/web.js'
 import type { Binary, Disposal } from '../types.js'
 import { createAesWasm } from '../wasm/aes.js'
-import { SLICE, yieldNow } from '../yield.js'
+import { OFFLOAD_SLICE, SLICE } from '../yield.js'
 import type { Cipher, CipherOptions } from './aes.js'
 import { AesBlock, disposable, fit, ivBytes, keyBytes, lifecycle, outputBytes } from './block.js'
 
@@ -188,19 +188,25 @@ export function ige(key: Binary): Cipher & Disposal {
     target?: Uint8Array,
   ): Promise<Uint8Array> {
     const output = target ?? new Uint8Array(data.length)
+
+    if (data.length <= SLICE) {
+      accelerate(data, initial, decrypt, fit(output, data.length))
+      return output
+    }
+
+    const run = decrypt ? accelerated!.decryptAsync : accelerated!.encryptAsync
     let iv = initial
 
     try {
-      for (let offset = 0; offset < data.length; offset += SLICE) {
-        const end = Math.min(offset + SLICE, data.length)
+      for (let offset = 0; offset < data.length; offset += OFFLOAD_SLICE) {
+        const end = Math.min(offset + OFFLOAD_SLICE, data.length)
         const tail = data.slice(end - 16, end)
 
-        accelerate(data.subarray(offset, end), iv, decrypt, output.subarray(offset, end))
+        await run(secret, iv, data.subarray(offset, end), output.subarray(offset, end))
+        guard()
 
         if (end < data.length) {
           iv = continuation(tail, output, end, decrypt)
-          await yieldNow()
-          guard()
         }
       }
 
@@ -215,8 +221,7 @@ export function ige(key: Binary): Cipher & Disposal {
     data: Uint8Array,
     initial: Uint8Array,
     target: Uint8Array | undefined,
-    encryptBlocks: (iv: Uint8Array, blocks: Uint8Array) => Uint8Array | undefined | Promise<Uint8Array | undefined>,
-    yields: boolean,
+    encryptBlocks: (iv: Uint8Array, blocks: Uint8Array) => Promise<Uint8Array | undefined>,
   ): Promise<Uint8Array | undefined> {
     const output = target ?? new Uint8Array(data.length)
     let chain: Uint8Array = initial.slice(0, 16)
@@ -237,11 +242,6 @@ export function ige(key: Binary): Cipher & Disposal {
 
       ;[before, previous] = chainOutput(blocks, prepared, before, previous, output.subarray(offset, offset + slice.length))
       chain = blocks.slice(blocks.length - 16)
-
-      if (yields && offset + SLICE < data.length) {
-        await yieldNow()
-        guard()
-      }
     }
 
     return output
@@ -285,17 +285,17 @@ export function ige(key: Binary): Cipher & Disposal {
     initial: Uint8Array,
     target: Uint8Array | undefined,
   ): Promise<Uint8Array | undefined> | Uint8Array | undefined {
-    if (native.encryptBlocksSync) {
-      return data.length <= SLICE
-        ? encryptCbcSync(data, initial, target)
-        : encryptCbc(data, initial, target, native.encryptBlocksSync, true)
+    if (native.encryptBlocksSync && data.length <= SLICE) {
+      return encryptCbcSync(data, initial, target)
     }
 
-    if (data.length < CBC_ASYNC_THRESHOLD || !native.encryptBlocks || !native.available()) {
+    const minimum = native.encryptBlocksSync ? CBC_SYNC_THRESHOLD : CBC_ASYNC_THRESHOLD
+
+    if (data.length < minimum || !native.encryptBlocks || !native.available()) {
       return undefined
     }
 
-    return encryptCbc(data, initial, target, native.encryptBlocks, false)
+    return encryptCbc(data, initial, target, native.encryptBlocks)
   }
 
   function transform(
