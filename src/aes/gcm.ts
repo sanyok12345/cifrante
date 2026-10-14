@@ -6,7 +6,7 @@ import { aesWasmAvailable, createAesWasm } from '../wasm/aes.js'
 import { nativeGcm } from '../native/web.js'
 import type { AbortOptions, Binary, Data, Disposal } from '../types.js'
 import type { Backend } from './aes.js'
-import { AesBlock, disposable, keyBytes, lifecycle } from './block.js'
+import { AesBlock, DISPOSE, disposable, keyBytes, lifecycle } from './block.js'
 
 export interface GcmOptions {
   tagLength?: 96 | 104 | 112 | 120 | 128
@@ -396,9 +396,8 @@ export function gcm(
     },
 
     dispose: life.dispose,
+    [DISPOSE]: life.dispose,
 
-    get backend(): Backend {
-      return native.available(PROBE_NONCE) ? 'native' : aesWasmAvailable() ? 'wasm' : 'js'
-    },
+    backend: native.available(PROBE_NONCE) ? 'native' : aesWasmAvailable() ? 'wasm' : 'js',
   })
 }

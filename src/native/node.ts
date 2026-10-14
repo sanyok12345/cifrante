@@ -279,14 +279,14 @@ export function nativeCipher(
 ): NativeCipher {
   const name = `aes-${key.length * 8}-${mode}`
   const prepare = lazy(() => supportsCipher(name) ? createSecretKey(key) : undefined)
-  const web = webCipher(mode, key)
+  const web = lazy(() => webCipher(mode, key))
 
   async function offload<T>(
     data: Uint8Array,
     operation: () => Promise<T | undefined> | undefined,
     fallback: () => T | undefined,
   ): Promise<T | undefined> {
-    const result = data.length >= OFFLOAD && web.available() ? await operation() : undefined
+    const result = data.length >= OFFLOAD && web().available() ? await operation() : undefined
 
     return result ?? fallback()
   }
@@ -357,12 +357,12 @@ export function nativeCipher(
   return {
     available: () => supportsCipher(name),
     stream,
-    encrypt: (iv, data) => offload(data, () => web.encrypt(iv, data), () => operate(iv, data, false)),
-    decrypt: (iv, data) => offload(data, () => web.decrypt(iv, data), () => operate(iv, data, true)),
+    encrypt: (iv, data) => offload(data, () => web().encrypt(iv, data), () => operate(iv, data, false)),
+    decrypt: (iv, data) => offload(data, () => web().decrypt(iv, data), () => operate(iv, data, true)),
     encryptSync: (iv, data) => operate(iv, data, false),
     decryptSync: (iv, data) => operate(iv, data, true),
-    encryptBlocks: (iv, data) => offload(data, () => web.encryptBlocks?.(iv, data), () => blocks(iv, data, false)),
-    decryptBlocks: (iv, data) => offload(data, () => web.decryptBlocks?.(iv, data), () => blocks(iv, data, true)),
+    encryptBlocks: (iv, data) => offload(data, () => web().encryptBlocks?.(iv, data), () => blocks(iv, data, false)),
+    decryptBlocks: (iv, data) => offload(data, () => web().decryptBlocks?.(iv, data), () => blocks(iv, data, true)),
     encryptBlocksSync: (iv, data) => blocks(iv, data, false),
     decryptBlocksSync: (iv, data) => blocks(iv, data, true),
   }
@@ -371,7 +371,7 @@ export function nativeCipher(
 export function nativeGcm(key: Uint8Array): NativeAead {
   const name = `aes-${key.length * 8}-gcm` as 'aes-128-gcm'
   const prepare = lazy(() => supportsCipher(name) ? createSecretKey(key) : undefined)
-  const web = webGcm(key)
+  const web = lazy(() => webGcm(key))
 
   function seal(
     nonce: Uint8Array,
@@ -425,15 +425,15 @@ export function nativeGcm(key: Uint8Array): NativeAead {
   return {
     available: (nonce) => supportsCipher(name) && nonce.length <= 128,
     async encrypt(nonce, data, aad, tagLength) {
-      const offloaded = data.length + aad.length >= OFFLOAD && web.available(nonce)
-        ? await web.encrypt(nonce, data, aad, tagLength)
+      const offloaded = data.length + aad.length >= OFFLOAD && web().available(nonce)
+        ? await web().encrypt(nonce, data, aad, tagLength)
         : undefined
 
       return offloaded ?? seal(nonce, data, aad, tagLength)
     },
     async decrypt(nonce, data, aad, tag) {
-      const offloaded = data.length + aad.length >= OFFLOAD && web.available(nonce)
-        ? await web.decrypt(nonce, data, aad, tag)
+      const offloaded = data.length + aad.length >= OFFLOAD && web().available(nonce)
+        ? await web().decrypt(nonce, data, aad, tag)
         : undefined
 
       return offloaded ?? open(nonce, data, aad, tag)

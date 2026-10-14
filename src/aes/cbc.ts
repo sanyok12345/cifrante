@@ -6,7 +6,7 @@ import type { Binary, Disposal } from '../types.js'
 import { aesWasmAvailable, createAesWasm } from '../wasm/aes.js'
 import { SLICE, watch } from '../yield.js'
 import type { Backend, Cipher, CipherOptions } from './aes.js'
-import { AesBlock, deliver, disposable, fit, ivBytes, keyBytes, lifecycle, outputBytes } from './block.js'
+import { AesBlock, DISPOSE, deliver, disposable, fit, ivBytes, keyBytes, lifecycle, outputBytes } from './block.js'
 
 export interface CbcOptions {
   padding?: boolean
@@ -330,9 +330,8 @@ export function cbc(key: Binary, options: CbcOptions = {}): Cipher & Disposal {
     },
 
     dispose: life.dispose,
+    [DISPOSE]: life.dispose,
 
-    get backend(): Backend {
-      return native.available() ? 'native' : aesWasmAvailable() ? 'wasm' : 'js'
-    },
+    backend: native.available() ? 'native' : aesWasmAvailable() ? 'wasm' : 'js',
   })
 }

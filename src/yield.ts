@@ -86,8 +86,12 @@ export function watch(options: unknown, check: () => void = () => {}): () => voi
     throw new InvalidInputError('signal must be an AbortSignal')
   }
 
+  if (signal === undefined) {
+    return check
+  }
+
   return () => {
     check()
-    ;(signal as AbortSignalLike | undefined)?.throwIfAborted()
+    ;(signal as AbortSignalLike).throwIfAborted()
   }
 }

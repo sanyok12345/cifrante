@@ -6,7 +6,7 @@ import type { Binary, Disposal } from '../types.js'
 import { aesWasmAvailable, createAesWasm } from '../wasm/aes.js'
 import { OFFLOAD_SLICE, SLICE, watch } from '../yield.js'
 import type { Backend, Cipher, CipherOptions } from './aes.js'
-import { AesBlock, disposable, fit, ivBytes, keyBytes, lifecycle, outputBytes } from './block.js'
+import { AesBlock, DISPOSE, disposable, fit, ivBytes, keyBytes, lifecycle, outputBytes } from './block.js'
 
 const CBC_SYNC_THRESHOLD = 512
 const CBC_ASYNC_THRESHOLD = 65536
@@ -101,7 +101,7 @@ function continuation(
 export function ige(key: Binary): Cipher & Disposal {
   const secret = keyBytes(key)
   const accelerated = nativeAddon()
-  const native = nativeCipher('cbc', secret)
+  const cbc = lazy(() => nativeCipher('cbc', secret))
   let instance: ReturnType<typeof createAesWasm>
   const prepare = lazy(() => (instance = createAesWasm(secret)))
   let block: AesBlock | undefined
@@ -253,6 +253,7 @@ export function ige(key: Binary): Cipher & Disposal {
     initial: Uint8Array,
     target: Uint8Array | undefined,
   ): Uint8Array | undefined {
+    const native = cbc()
     const encryptBlocks = native.encryptBlocksSync
 
     if (data.length < CBC_SYNC_THRESHOLD || !encryptBlocks || !native.available()) {
@@ -287,6 +288,8 @@ export function ige(key: Binary): Cipher & Disposal {
     target: Uint8Array | undefined,
     guard: () => void,
   ): Promise<Uint8Array | undefined> | Uint8Array | undefined {
+    const native = cbc()
+
     if (native.encryptBlocksSync && data.length <= SLICE) {
       return encryptCbcSync(data, initial, target)
     }
@@ -369,45 +372,52 @@ export function ige(key: Binary): Cipher & Disposal {
     return fit(output, data.length)
   }
 
-  function run<T>(
-    data: Uint8Array,
-    options: CipherOptions,
-    operation: (input: Uint8Array, initial: Uint8Array, target: Uint8Array | undefined, guard: () => void) => T,
-  ): T {
+  function prepareOperation(data: Uint8Array, options: CipherOptions) {
     const guard = watch(options, life.check)
 
     guard()
 
-    const initial = ivBytes(options, 32, false)
-
-    return operation(data, initial, outputBytes(options.output, data, data.length), guard)
+    return {
+      initial: ivBytes(options, 32, false),
+      target: outputBytes(options.output, data, data.length),
+      guard,
+    }
   }
 
   return disposable<Cipher>({
     async encrypt(data, options) {
-      return run(toBytesView(data), options, (input, initial, target, guard) =>
-        transformAsync(input, initial, false, target, guard))
+      const input = toBytesView(data)
+      const { initial, target, guard } = prepareOperation(input, options)
+
+      return transformAsync(input, initial, false, target, guard)
     },
 
     async decrypt(data, options) {
-      return run(toBinaryView(data), options, (input, initial, target, guard) =>
-        transformAsync(input, initial, true, target, guard))
+      const input = toBinaryView(data)
+      const { initial, target, guard } = prepareOperation(input, options)
+
+      return transformAsync(input, initial, true, target, guard)
     },
 
     encryptSync(data, options) {
-      return run(toBytesView(data), options, (input, initial, target) =>
-        transform(input, initial, false, target))
+      const input = toBytesView(data)
+
+      watch(options, life.check)()
+
+      return transform(input, ivBytes(options, 32, false), false, outputBytes(options.output, input, input.length))
     },
 
     decryptSync(data, options) {
-      return run(toBinaryView(data), options, (input, initial, target) =>
-        transform(input, initial, true, target))
+      const input = toBinaryView(data)
+
+      watch(options, life.check)()
+
+      return transform(input, ivBytes(options, 32, false), true, outputBytes(options.output, input, input.length))
     },
 
     dispose: life.dispose,
+    [DISPOSE]: life.dispose,
 
-    get backend(): Backend {
-      return accelerated ? 'native' : aesWasmAvailable() ? 'wasm' : 'js'
-    },
+    backend: accelerated ? 'native' : aesWasmAvailable() ? 'wasm' : 'js',
   })
 }

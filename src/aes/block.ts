@@ -115,13 +115,9 @@ export function lifecycle(name: string, release: () => void) {
   }
 }
 
+export const DISPOSE: symbol = (Symbol as { dispose?: symbol }).dispose ?? Symbol('dispose')
+
 export function disposable<T extends { dispose(): void }>(target: T): T & Disposal {
-  const key = (Symbol as { dispose?: symbol }).dispose
-
-  if (typeof key === 'symbol') {
-    Object.defineProperty(target, key, { value: target.dispose, configurable: true })
-  }
-
   return target as T & Disposal
 }
 

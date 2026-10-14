@@ -6,7 +6,7 @@ import { nativeAddon, nativeCipher } from '../native/web.js'
 import type { Binary, Disposal } from '../types.js'
 import { CHUNK, SLICE, pacer, watch } from '../yield.js'
 import type { Backend, CipherOptions, CtrCipher, CtrState } from './aes.js'
-import { AesBlock, deliver, disposable, fit, ivBytes, keyBytes, lifecycle, outputBytes } from './block.js'
+import { AesBlock, DISPOSE, deliver, disposable, fit, ivBytes, keyBytes, lifecycle, outputBytes } from './block.js'
 
 interface Stream {
   update(data: Uint8Array, target?: Uint8Array): Uint8Array
@@ -267,6 +267,13 @@ export function ctr(key: Binary): CtrCipher & Disposal {
       const state = stream(ivBytes(options, 16))
       let disposed = false
 
+      function release(): void {
+        if (!disposed) {
+          disposed = true
+          state.dispose()
+        }
+      }
+
       return disposable<CtrState>({
         update(data, output) {
           if (disposed) {
@@ -283,19 +290,14 @@ export function ctr(key: Binary): CtrCipher & Disposal {
           return fit(state.update(input, target), input.length)
         },
 
-        dispose() {
-          if (!disposed) {
-            disposed = true
-            state.dispose()
-          }
-        },
+        dispose: release,
+        [DISPOSE]: release,
       })
     },
 
     dispose: life.dispose,
+    [DISPOSE]: life.dispose,
 
-    get backend(): Backend {
-      return accelerated || native.available() ? 'native' : aesWasmAvailable() ? 'wasm' : 'js'
-    },
+    backend: accelerated || native.available() ? 'native' : aesWasmAvailable() ? 'wasm' : 'js',
   })
 }
