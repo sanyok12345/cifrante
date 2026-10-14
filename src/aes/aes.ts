@@ -6,6 +6,8 @@ import { gcm } from './gcm.js'
 import type { AeadCipher, GcmOptions } from './gcm.js'
 import { ige } from './ige.js'
 
+export type Backend = 'native' | 'wasm' | 'js'
+
 export interface CipherOptions extends AbortOptions {
   iv: Binary
   output?: Uint8Array
@@ -17,6 +19,7 @@ export interface Cipher {
   encryptSync(data: Data, options: CipherOptions): Uint8Array
   decryptSync(data: Binary, options: CipherOptions): Uint8Array
   dispose(): void
+  readonly backend: Backend
 }
 
 export interface CtrState {

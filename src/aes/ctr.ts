@@ -1,11 +1,11 @@
 import { toBinaryView, toBytesView } from '../bytes.js'
 import { InvalidInputError } from '../errors.js'
 import { lazy } from '../lazy.js'
-import { createAesWasm } from '../wasm/aes.js'
+import { aesWasmAvailable, createAesWasm } from '../wasm/aes.js'
 import { nativeAddon, nativeCipher } from '../native/web.js'
 import type { Binary, Disposal } from '../types.js'
 import { CHUNK, SLICE, pacer, watch } from '../yield.js'
-import type { CipherOptions, CtrCipher, CtrState } from './aes.js'
+import type { Backend, CipherOptions, CtrCipher, CtrState } from './aes.js'
 import { AesBlock, deliver, disposable, fit, ivBytes, keyBytes, lifecycle, outputBytes } from './block.js'
 
 interface Stream {
@@ -293,5 +293,9 @@ export function ctr(key: Binary): CtrCipher & Disposal {
     },
 
     dispose: life.dispose,
+
+    get backend(): Backend {
+      return accelerated || native.available() ? 'native' : aesWasmAvailable() ? 'wasm' : 'js'
+    },
   })
 }

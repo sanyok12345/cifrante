@@ -3,9 +3,9 @@ import { AuthenticationError, InvalidInputError } from '../errors.js'
 import { lazy } from '../lazy.js'
 import { nativeCipher } from '../native/web.js'
 import type { Binary, Disposal } from '../types.js'
-import { createAesWasm } from '../wasm/aes.js'
+import { aesWasmAvailable, createAesWasm } from '../wasm/aes.js'
 import { SLICE, watch } from '../yield.js'
-import type { Cipher, CipherOptions } from './aes.js'
+import type { Backend, Cipher, CipherOptions } from './aes.js'
 import { AesBlock, deliver, disposable, fit, ivBytes, keyBytes, lifecycle, outputBytes } from './block.js'
 
 export interface CbcOptions {
@@ -330,5 +330,9 @@ export function cbc(key: Binary, options: CbcOptions = {}): Cipher & Disposal {
     },
 
     dispose: life.dispose,
+
+    get backend(): Backend {
+      return native.available() ? 'native' : aesWasmAvailable() ? 'wasm' : 'js'
+    },
   })
 }

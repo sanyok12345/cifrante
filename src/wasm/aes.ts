@@ -52,6 +52,10 @@ function check(status: number): void {
   }
 }
 
+export function aesWasmAvailable(): boolean {
+  return load() !== undefined
+}
+
 export function createAesWasm(key: Uint8Array) {
   const loaded = load()
 

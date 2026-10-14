@@ -35,7 +35,7 @@ export type { Bytes, Binary, Data, AbortOptions, AbortSignalLike } from './types
 export type { Random } from './random.js'
 export type { Codec, Utf8Codec, BytesAPI } from './bytes.js'
 export type { Hash, HashState } from './hash/hash.js'
-export type { AES, Cipher, CipherOptions, CtrCipher, CtrState } from './aes/aes.js'
+export type { AES, Backend, Cipher, CipherOptions, CtrCipher, CtrState } from './aes/aes.js'
 export type { CbcOptions } from './aes/cbc.js'
 export type { GcmOptions, GcmOperationOptions, Sealed, AeadCipher } from './aes/gcm.js'
 export type { Hmac, HmacState, HMAC } from './hmac.js'

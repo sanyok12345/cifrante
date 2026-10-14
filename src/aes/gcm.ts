@@ -2,9 +2,10 @@ import { toBinary, toBinaryView, toBytes, toBytesView } from '../bytes.js'
 import { AuthenticationError, InvalidInputError, InvalidNonceError } from '../errors.js'
 import { lazy } from '../lazy.js'
 import { SLICE, watch } from '../yield.js'
-import { createAesWasm } from '../wasm/aes.js'
+import { aesWasmAvailable, createAesWasm } from '../wasm/aes.js'
 import { nativeGcm } from '../native/web.js'
 import type { AbortOptions, Binary, Data, Disposal } from '../types.js'
+import type { Backend } from './aes.js'
 import { AesBlock, disposable, keyBytes, lifecycle } from './block.js'
 
 export interface GcmOptions {
@@ -27,6 +28,7 @@ export interface AeadCipher {
   encryptSync(data: Data, options: GcmOperationOptions): Sealed
   decryptSync(data: Sealed, options: GcmOperationOptions): Uint8Array
   dispose(): void
+  readonly backend: Backend
 }
 
 class GHash {
@@ -114,6 +116,8 @@ function nonceBytes(nonce: Binary): Uint8Array {
 
   return bytes
 }
+
+const PROBE_NONCE = new Uint8Array(12)
 
 function checkLength(length: number): void {
   if (length > 2 ** 36 - 32) {
@@ -392,5 +396,9 @@ export function gcm(
     },
 
     dispose: life.dispose,
+
+    get backend(): Backend {
+      return native.available(PROBE_NONCE) ? 'native' : aesWasmAvailable() ? 'wasm' : 'js'
+    },
   })
 }
