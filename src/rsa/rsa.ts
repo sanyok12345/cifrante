@@ -1,19 +1,19 @@
-import type { Binary, Data } from './types.js'
-import type { HashName } from './kdf.js'
-import { bigIntToBytes, bytesToBigInt, toBinary, toBytes } from './bytes.js'
+import type { Binary, Data } from '../types.js'
+import type { HashName } from '../kdf.js'
+import { bigIntToBytes, bytesToBigInt, toBinary, toBytes } from '../bytes.js'
 import {
   AuthenticationError,
   InvalidInputError,
   InvalidKeyError,
   UnsupportedError,
-} from './errors.js'
-import { sha1Sync } from './hash/sha1.js'
-import { sha256Sync } from './hash/sha256.js'
-import { sha512Sync } from './hash/sha512.js'
-import { math, randomBelow } from './math.js'
-import { inverseMod } from './rsa-key.js'
-import { nativeOaep, nativeRsaPrivate, nativeRsaPublic } from './native/web.js'
-import { random } from './random.js'
+} from '../errors.js'
+import { sha1Sync } from '../hash/sha1.js'
+import { sha256Sync } from '../hash/sha256.js'
+import { sha512Sync } from '../hash/sha512.js'
+import { math, randomBelow } from '../math.js'
+import { inverseMod } from './key.js'
+import { nativeOaep, nativeRsaPrivate, nativeRsaPublic } from '../native/web.js'
+import { random } from '../random.js'
 
 export interface RsaPublicKey {
   n: bigint

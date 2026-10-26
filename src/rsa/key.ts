@@ -1,5 +1,5 @@
-import { InvalidKeyError } from './errors.js'
-import type { NativeRsaKey } from './native/types.js'
+import { InvalidKeyError } from '../errors.js'
+import type { NativeRsaKey } from '../native/types.js'
 
 export function inverseMod(value: bigint, modulus: bigint): bigint {
   let a = modulus

@@ -32,7 +32,7 @@ import {
   nativeGcm as webGcm,
   nativeMac as webMac,
 } from './web.js'
-import { rsaJwk } from '../rsa-key.js'
+import { rsaJwk } from '../rsa/key.js'
 import type {
   NativeAead,
   NativeCipher,

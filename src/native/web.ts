@@ -1,7 +1,7 @@
 import { bigIntToBytes, encodeBase64 } from '../bytes.js'
 import { AuthenticationError, UnsupportedError } from '../errors.js'
 import { lazy } from '../lazy.js'
-import { rsaJwk } from '../rsa-key.js'
+import { rsaJwk } from '../rsa/key.js'
 import type {
   NativeAead,
   NativeCipher,
