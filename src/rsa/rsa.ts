@@ -10,10 +10,10 @@ import {
 import { sha1Sync } from '../hash/sha1.js'
 import { sha256Sync } from '../hash/sha256.js'
 import { sha512Sync } from '../hash/sha512.js'
-import { math, randomBelow } from '../math.js'
+import { math } from '../math.js'
 import { inverseMod } from './key.js'
 import { nativeOaep, nativeRsaPrivate, nativeRsaPublic } from '../native/web.js'
-import { random } from '../random.js'
+import { random, randomBelow } from '../random.js'
 
 export interface RsaPublicKey {
   n: bigint

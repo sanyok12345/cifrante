@@ -1,6 +1,5 @@
 import { InvalidInputError, UnsupportedError } from './errors.js'
-import { bytesToBigInt } from './bytes.js'
-import { random } from './random.js'
+import { randomBelow } from './random.js'
 
 export interface Factors {
   p: bigint
@@ -73,32 +72,6 @@ function modPow(base: bigint, exponent: bigint, modulus: bigint): bigint {
   }
 
   return result
-}
-
-export function randomBelow(limit: bigint): bigint {
-  if (limit <= 0n) {
-    throw new InvalidInputError('Random integer limit must be positive')
-  }
-
-  if (limit === 1n) {
-    return 0n
-  }
-
-  const bits = (limit - 1n).toString(2).length
-  const length = Math.ceil(bits / 8)
-  const mask = 0xff >>> (length * 8 - bits)
-
-  for (let attempt = 0; attempt < 128; attempt++) {
-    const data = random(length)
-    data[0] &= mask
-    const value = bytesToBigInt(data)
-
-    if (value < limit) {
-      return value
-    }
-  }
-
-  throw new UnsupportedError('Cryptographic random sampling failed')
 }
 
 function isPrime(value: bigint): boolean {
