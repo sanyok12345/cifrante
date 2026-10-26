@@ -35,6 +35,7 @@ import {
   nativeMac as webMac,
 } from './web.js'
 import { rsaJwk } from '../rsa/key.js'
+import { x25519Pkcs8, x25519Spki } from './x25519.js'
 import type {
   NativeAead,
   NativeCipher,
@@ -575,4 +576,42 @@ export function nativeRsaPrivate(
   return key === undefined ? undefined : new Uint8Array(
     privateDecrypt({ key, padding: constants.RSA_NO_PADDING }, data),
   )
+}
+
+function x25519Key(create: () => KeyObject): KeyObject | undefined {
+  try {
+    return create()
+  } catch {
+    return undefined
+  }
+}
+
+export async function nativeX25519Public(privateKey: Uint8Array): Promise<Uint8Array | undefined> {
+  const secret = x25519Key(() => createPrivateKey({ key: Buffer.from(x25519Pkcs8(privateKey)), format: 'der', type: 'pkcs8' }))
+
+  if (secret === undefined) {
+    return undefined
+  }
+
+  const spki = createPublicKey(secret).export({ format: 'der', type: 'spki' })
+
+  return Uint8Array.from(spki.subarray(spki.length - 32))
+}
+
+export async function nativeX25519Shared(
+  privateKey: Uint8Array,
+  publicKey: Uint8Array,
+): Promise<Uint8Array | undefined> {
+  const secret = x25519Key(() => createPrivateKey({ key: Buffer.from(x25519Pkcs8(privateKey)), format: 'der', type: 'pkcs8' }))
+  const peer = x25519Key(() => createPublicKey({ key: Buffer.from(x25519Spki(publicKey)), format: 'der', type: 'spki' }))
+
+  if (secret === undefined || peer === undefined) {
+    return undefined
+  }
+
+  try {
+    return Uint8Array.from(crypto.diffieHellman({ privateKey: secret, publicKey: peer }))
+  } catch {
+    return undefined
+  }
 }

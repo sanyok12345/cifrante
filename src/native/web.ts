@@ -1,7 +1,8 @@
-import { bigIntToBytes, encodeBase64 } from '../bytes.js'
+import { bigIntToBytes, decodeBase64Url, encodeBase64 } from '../bytes.js'
 import { AuthenticationError, UnsupportedError } from '../errors.js'
 import { lazy } from '../lazy.js'
 import { rsaJwk } from '../rsa/key.js'
+import { x25519Pkcs8 } from './x25519.js'
 import type {
   NativeAead,
   NativeCipher,
@@ -552,5 +553,53 @@ export function nativeOaep(
 
       return decrypt(context, algorithm, data, `RSA-OAEP:decrypt:${hash}`, 'RSA-OAEP decryption failed')
     },
+  }
+}
+
+function importX25519(subtle: SubtleCrypto, privateKey: Uint8Array, extractable: boolean): Promise<CryptoKey> {
+  return subtle.importKey('pkcs8', x25519Pkcs8(privateKey), 'X25519', extractable, ['deriveBits'])
+}
+
+export async function nativeX25519Public(privateKey: Uint8Array): Promise<Uint8Array | undefined> {
+  const subtle = globalThis.crypto?.subtle
+
+  if (!subtle) {
+    return undefined
+  }
+
+  const jwk = await supported(subtle, 'X25519', async () =>
+    subtle.exportKey('jwk', await importX25519(subtle, privateKey, true)),
+  () => true)
+
+  return jwk?.x === undefined ? undefined : decodeBase64Url(jwk.x)
+}
+
+export async function nativeX25519Shared(
+  privateKey: Uint8Array,
+  publicKey: Uint8Array,
+): Promise<Uint8Array | undefined> {
+  const subtle = globalThis.crypto?.subtle
+
+  if (!subtle) {
+    return undefined
+  }
+
+  try {
+    const output = await supported(subtle, 'X25519', async () => {
+      const [secret, peer] = await Promise.all([
+        importX25519(subtle, privateKey, false),
+        subtle.importKey('raw', source(publicKey), 'X25519', true, []),
+      ])
+
+      return subtle.deriveBits({ name: 'X25519', public: peer }, secret, 256)
+    }, error => errorName(error) !== 'OperationError')
+
+    return output === undefined ? undefined : new Uint8Array(output)
+  } catch (error) {
+    if (errorName(error) === 'OperationError') {
+      return undefined
+    }
+
+    throw error
   }
 }

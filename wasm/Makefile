@@ -7,7 +7,7 @@ LDFLAGS = -Wl,--no-entry -Wl,--export-memory -Wl,--strip-all -Wl,--compress-relo
   -Wl,--fatal-warnings -Wl,-z,stack-size=16384 \
   -Wl,--initial-memory=131072 -Wl,--max-memory=131072
 OUT_DIR = ../build/wasm
-MODULES = $(addprefix $(OUT_DIR)/,sha256.wasm sha512.wasm aes.wasm aes.simd.wasm aes.relaxed.wasm pbkdf2.wasm)
+MODULES = $(addprefix $(OUT_DIR)/,sha256.wasm sha512.wasm aes.wasm aes.simd.wasm aes.relaxed.wasm pbkdf2.wasm x25519.wasm)
 HASH_HEADERS = hash/hash.h hash/buffer.h wasm.h
 AES_MODES = aes/modes.c aes/ige.c aes/cbc.c aes/ctr.c aes/gcm.c
 AES_HEADERS = aes/aes.h aes/modes.h wasm.h
@@ -32,6 +32,8 @@ $(OUT_DIR)/aes.relaxed.wasm: aes/simd.c $(AES_MODES) aes/tables.h $(AES_HEADERS)
 
 $(OUT_DIR)/pbkdf2.wasm: kdf/pbkdf2.c hash/sha1.c hash/sha256.c hash/sha512.c \
   $(HASH_HEADERS) Makefile
+
+$(OUT_DIR)/x25519.wasm: x25519/x25519.c wasm.h Makefile
 
 $(MODULES): | $(OUT_DIR)
 	$(CC) $(CPPFLAGS) $(BASE_CFLAGS) $(ARCH_FLAGS) $(filter %.c,$^) $(LDFLAGS) -o $@

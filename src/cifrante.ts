@@ -9,6 +9,7 @@ import { hmac } from './hmac.js'
 import { kdf } from './kdf.js'
 import { math } from './math.js'
 import { rsa } from './rsa/rsa.js'
+import { x25519 } from './x25519/x25519.js'
 import {
   CifranteError,
   InvalidInputError,
@@ -19,7 +20,7 @@ import {
   AuthenticationError,
 } from './errors.js'
 
-export { random, bytes, md5, sha1, sha256, sha384, sha512, aes, hmac, kdf, math, rsa }
+export { random, bytes, md5, sha1, sha256, sha384, sha512, aes, hmac, kdf, math, rsa, x25519 }
 
 export {
   CifranteError,
@@ -42,6 +43,7 @@ export type { Hmac, HmacState, HMAC } from './hmac.js'
 export type { HashName, Pbkdf2Options, HkdfOptions, Pbkdf2, Hkdf, KDF } from './kdf.js'
 export type { RsaPublicKey, RsaPrivateKey, RsaKeyInput, RsaOaepOptions, RsaOaep, RSA } from './rsa/rsa.js'
 export type { Factors, MathCrypto } from './math.js'
+export type { X25519, X25519KeyPair } from './x25519/x25519.js'
 
 export default {
   random,
@@ -56,6 +58,7 @@ export default {
   kdf,
   math,
   rsa,
+  x25519,
   CifranteError,
   InvalidInputError,
   UnsupportedError,
