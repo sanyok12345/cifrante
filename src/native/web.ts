@@ -260,6 +260,26 @@ export async function nativeHkdf(
   return derive(input, { name: 'HKDF', hash, salt: source(salt), info: source(info) }, length)
 }
 
+export function nativePbkdf2Sync(
+  _name: string,
+  _password: Uint8Array,
+  _salt: Uint8Array,
+  _iterations: number,
+  _length: number,
+): Uint8Array | undefined {
+  return undefined
+}
+
+export function nativeHkdfSync(
+  _name: string,
+  _input: Uint8Array,
+  _salt: Uint8Array,
+  _info: Uint8Array,
+  _length: number,
+): Uint8Array | undefined {
+  return undefined
+}
+
 export function nativeCipher(mode: 'cbc' | 'ctr', secret: Uint8Array): NativeCipher {
   const name = mode === 'cbc' ? 'AES-CBC' : 'AES-CTR'
   const prepare = aesKey(name, secret)

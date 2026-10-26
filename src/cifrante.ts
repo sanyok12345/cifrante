@@ -39,7 +39,7 @@ export type { AES, Backend, Cipher, CipherOptions, CtrCipher, CtrState } from '.
 export type { CbcOptions } from './aes/cbc.js'
 export type { GcmOptions, GcmOperationOptions, Sealed, AeadCipher } from './aes/gcm.js'
 export type { Hmac, HmacState, HMAC } from './hmac.js'
-export type { HashName, Pbkdf2Options, HkdfOptions, KDF } from './kdf.js'
+export type { HashName, Pbkdf2Options, HkdfOptions, Pbkdf2, Hkdf, KDF } from './kdf.js'
 export type { RsaPublicKey, RsaPrivateKey, RsaOaepOptions, RsaOaep, RSA } from './rsa/rsa.js'
 export type { Factors, MathCrypto } from './math.js'
 

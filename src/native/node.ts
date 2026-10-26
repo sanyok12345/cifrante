@@ -13,7 +13,9 @@ import {
   getFips,
   getHashes,
   hkdf,
+  hkdfSync,
   pbkdf2,
+  pbkdf2Sync,
   privateDecrypt,
   publicEncrypt,
   randomFillSync,
@@ -262,6 +264,34 @@ export async function nativeHkdf(
   }
 
   return callbackBytes(callback => hkdf(hash, input, salt, info, length, callback))
+}
+
+export function nativePbkdf2Sync(
+  hash: string,
+  password: Uint8Array,
+  salt: Uint8Array,
+  iterations: number,
+  length: number,
+): Uint8Array | undefined {
+  if (!supportsHash(hash) || iterations > 0x7fffffff || length > 0x7fffffff) {
+    return undefined
+  }
+
+  return Uint8Array.from(pbkdf2Sync(password, salt, iterations, length, hash))
+}
+
+export function nativeHkdfSync(
+  hash: string,
+  input: Uint8Array,
+  salt: Uint8Array,
+  info: Uint8Array,
+  length: number,
+): Uint8Array | undefined {
+  if (!supportsHash(hash) || info.length > 1024) {
+    return undefined
+  }
+
+  return new Uint8Array(hkdfSync(hash, input, salt, info, length))
 }
 
 function concat(first: Uint8Array, second: Uint8Array): Uint8Array {
