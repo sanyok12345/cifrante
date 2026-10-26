@@ -177,6 +177,16 @@ export function decodeBase64(data: string): Uint8Array<ArrayBuffer> {
   return result
 }
 
+export function decodeBase64Url(data: string): Uint8Array<ArrayBuffer> {
+  if (typeof data !== 'string' || /[^A-Za-z0-9_-]/.test(data) || data.length % 4 === 1) {
+    throw new InvalidInputError('Expected unpadded Base64url')
+  }
+
+  const base64 = data.replace(/-/g, '+').replace(/_/g, '/')
+
+  return decodeBase64(base64.padEnd(Math.ceil(base64.length / 4) * 4, '='))
+}
+
 function encodeUtf8(data: string): Uint8Array<ArrayBuffer> {
   if (typeof data !== 'string') {
     throw new InvalidInputError('Expected a string')

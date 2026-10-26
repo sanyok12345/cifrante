@@ -11,6 +11,8 @@ import { sha1Sync } from '../hash/sha1.js'
 import { sha256Sync } from '../hash/sha256.js'
 import { sha512Sync } from '../hash/sha512.js'
 import { math } from '../math.js'
+import { decodePrivateKey, decodePublicKey } from './encoding.js'
+import type { RsaKeyInput } from './encoding.js'
 import { inverseMod } from './key.js'
 import { nativeOaep, nativeRsaPrivate, nativeRsaPublic } from '../native/web.js'
 import { random, randomBelow } from '../random.js'
@@ -37,7 +39,11 @@ export interface RsaOaep {
   decrypt(data: Binary): Promise<Uint8Array>
 }
 
+export type { RsaKeyInput } from './encoding.js'
+
 export interface RSA {
+  publicKey(key: RsaKeyInput): RsaPublicKey
+  privateKey(key: RsaKeyInput): RsaPrivateKey
   raw(key: RsaPublicKey | RsaPrivateKey, data: Binary): Promise<Uint8Array>
   oaep(key: RsaPublicKey | RsaPrivateKey, options?: RsaOaepOptions): RsaOaep
 }
@@ -354,7 +360,25 @@ function oaep(
   }
 }
 
+function publicKey(key: RsaKeyInput): RsaPublicKey {
+  const parsed = decodePublicKey(key)
+
+  checkKey(parsed)
+
+  return parsed
+}
+
+function privateKey(key: RsaKeyInput): RsaPrivateKey {
+  const parsed = decodePrivateKey(key)
+
+  checkKey(parsed)
+
+  return parsed
+}
+
 export const rsa: RSA = {
+  publicKey,
+  privateKey,
   raw,
   oaep,
 }
