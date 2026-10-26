@@ -1,5 +1,5 @@
 import { bigIntToBytes, decodeBase64Url, encodeBase64 } from '../bytes.js'
-import { AuthenticationError, UnsupportedError } from '../errors.js'
+import { AuthenticationError, InvalidInputError, UnsupportedError } from '../errors.js'
 import { lazy } from '../lazy.js'
 import { rsaJwk } from '../rsa/key.js'
 import { x25519Pkcs8 } from './x25519.js'
@@ -602,4 +602,73 @@ export async function nativeX25519Shared(
 
     throw error
   }
+}
+
+type Compression = typeof CompressionStream | typeof DecompressionStream
+
+async function pipe(
+  Stream: Compression,
+  data: Uint8Array,
+  limit: number,
+  guard: () => void,
+): Promise<Uint8Array | undefined> {
+  const stream = new Stream('gzip')
+  const writer = stream.writable.getWriter()
+  const reader = stream.readable.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+
+  writer.write(source(data)).then(() => writer.close()).catch(() => {})
+
+  try {
+    for (;;) {
+      let chunk: ReadableStreamReadResult<Uint8Array>
+
+      try {
+        chunk = await reader.read()
+      } catch {
+        return undefined
+      }
+
+      if (chunk.done) {
+        break
+      }
+
+      total += chunk.value.length
+
+      if (total > limit) {
+        throw new InvalidInputError('Decompressed data exceeds maxLength')
+      }
+
+      chunks.push(chunk.value)
+      guard()
+    }
+  } catch (error) {
+    reader.cancel().catch(() => {})
+    throw error
+  }
+
+  const output = new Uint8Array(total)
+
+  for (let i = 0, offset = 0; i < chunks.length; offset += chunks[i].length, i++) {
+    output.set(chunks[i], offset)
+  }
+
+  return output
+}
+
+export async function nativeGzip(data: Uint8Array): Promise<Uint8Array | undefined> {
+  return typeof CompressionStream === 'function'
+    ? pipe(CompressionStream, data, Infinity, () => {})
+    : undefined
+}
+
+export async function nativeGunzip(
+  data: Uint8Array,
+  limit: number,
+  guard: () => void,
+): Promise<Uint8Array | undefined> {
+  return typeof DecompressionStream === 'function'
+    ? pipe(DecompressionStream, data, limit, guard)
+    : undefined
 }

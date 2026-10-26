@@ -1,5 +1,6 @@
 import * as crypto from 'node:crypto'
 import { createRequire } from 'node:module'
+import { gunzip, gzip } from 'node:zlib'
 import {
   constants,
   createCipheriv,
@@ -24,6 +25,7 @@ import {
 } from 'node:crypto'
 import {
   AuthenticationError,
+  InvalidInputError,
   UnsupportedError,
 } from '../errors.js'
 import { lazy } from '../lazy.js'
@@ -613,5 +615,39 @@ export async function nativeX25519Shared(
     return Uint8Array.from(crypto.diffieHellman({ privateKey: secret, publicKey: peer }))
   } catch {
     return undefined
+  }
+}
+
+function errorCode(error: unknown): unknown {
+  return error !== null && typeof error === 'object' && 'code' in error ? error.code : undefined
+}
+
+export function nativeGzip(data: Uint8Array): Promise<Uint8Array> {
+  return callbackBytes(callback => gzip(data, callback))
+}
+
+export async function nativeGunzip(data: Uint8Array, limit: number): Promise<Uint8Array> {
+  const maxOutputLength = Math.min(Math.max(limit, 1), Number.MAX_SAFE_INTEGER)
+
+  try {
+    const output = await callbackBytes(callback => gunzip(data, { maxOutputLength }, callback))
+
+    if (output.length > limit) {
+      throw new InvalidInputError('Decompressed data exceeds maxLength')
+    }
+
+    return output
+  } catch (error) {
+    const code = errorCode(error)
+
+    if (code === 'ERR_BUFFER_TOO_LARGE') {
+      throw new InvalidInputError('Decompressed data exceeds maxLength')
+    }
+
+    if (typeof code === 'string' && code.startsWith('Z_')) {
+      throw new InvalidInputError('Invalid gzip data')
+    }
+
+    throw error
   }
 }
