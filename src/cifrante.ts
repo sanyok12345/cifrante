@@ -11,6 +11,7 @@ import { math } from './math.js'
 import { rsa } from './rsa/rsa.js'
 import { x25519 } from './x25519/x25519.js'
 import { gzip } from './gzip/gzip.js'
+import { crc32 } from './crc32.js'
 import {
   CifranteError,
   InvalidInputError,
@@ -21,7 +22,7 @@ import {
   AuthenticationError,
 } from './errors.js'
 
-export { random, bytes, md5, sha1, sha256, sha384, sha512, aes, hmac, kdf, math, rsa, x25519, gzip }
+export { random, bytes, md5, sha1, sha256, sha384, sha512, aes, hmac, kdf, math, rsa, x25519, gzip, crc32 }
 
 export {
   CifranteError,
@@ -46,6 +47,7 @@ export type { RsaPublicKey, RsaPrivateKey, RsaJsonWebKey, RsaKeyInput, RsaOaepOp
 export type { Factors, MathCrypto } from './math.js'
 export type { X25519, X25519KeyPair } from './x25519/x25519.js'
 export type { Gzip, GzipOptions } from './gzip/gzip.js'
+export type { Crc32, Crc32State } from './crc32.js'
 
 export default {
   random,
@@ -62,6 +64,7 @@ export default {
   rsa,
   x25519,
   gzip,
+  crc32,
   CifranteError,
   InvalidInputError,
   UnsupportedError,

@@ -1,6 +1,7 @@
 import * as crypto from 'node:crypto'
 import { kMaxLength } from 'node:buffer'
 import { createRequire } from 'node:module'
+import * as zlib from 'node:zlib'
 import { gunzip, gzip } from 'node:zlib'
 import {
   constants,
@@ -131,6 +132,12 @@ const addon = /* @__PURE__ */ lazy((): NativeAddon | undefined => {
 
   return undefined
 })
+
+const zlibCrc32 = (zlib as { crc32?: (data: Uint8Array, value: number) => number }).crc32
+
+export function nativeCrc32(data: Uint8Array, previous: number): number | undefined {
+  return data.length < 32 ? undefined : zlibCrc32?.(data, previous)
+}
 
 export function nativeAddon(): NativeAddon | undefined {
   return addon()

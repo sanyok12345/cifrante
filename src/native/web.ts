@@ -146,6 +146,10 @@ export function fillRandom(bytes: Uint8Array): void {
   scratch?.fill(0)
 }
 
+export function nativeCrc32(_data: Uint8Array, _previous: number): number | undefined {
+  return undefined
+}
+
 export function nativeHash(_name: string): NativeHash | undefined {
   return undefined
 }

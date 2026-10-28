@@ -1,5 +1,5 @@
 import { InvalidInputError } from '../errors.js'
-import { crc32 } from './crc32.js'
+import { crc32Update as crc32 } from '../crc32.js'
 import { deflate } from './deflate.js'
 import { inflate } from './inflate.js'
 
