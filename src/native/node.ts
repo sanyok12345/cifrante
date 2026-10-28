@@ -2,7 +2,6 @@ import * as crypto from 'node:crypto'
 import { kMaxLength } from 'node:buffer'
 import { createRequire } from 'node:module'
 import * as zlib from 'node:zlib'
-import { gunzip, gzip } from 'node:zlib'
 import {
   constants,
   createCipheriv,
@@ -626,36 +625,69 @@ export async function nativeX25519Shared(
   }
 }
 
-function errorCode(error: unknown): unknown {
-  return error !== null && typeof error === 'object' && 'code' in error ? error.code : undefined
+type Inflated = { buffer: Uint8Array, engine: { bytesWritten: number } }
+
+function bytesOf(buffer: Uint8Array): Uint8Array {
+  return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
+}
+
+function gunzipOptions(limit: number): zlib.ZlibOptions & { info: true } {
+  return limit < kMaxLength ? { info: true, maxOutputLength: Math.max(limit, 1) } : { info: true }
+}
+
+function inflated(input: Uint8Array, limit: number, { buffer, engine }: Inflated): Uint8Array {
+  if (engine.bytesWritten !== input.length) {
+    throw new InvalidInputError('Invalid gzip data')
+  }
+
+  if (buffer.length > limit) {
+    throw new InvalidInputError('Decompressed data exceeds maxLength')
+  }
+
+  return bytesOf(buffer)
+}
+
+function gunzipError(error: unknown): never {
+  const code = error !== null && typeof error === 'object' && 'code' in error ? error.code : undefined
+
+  if (code === 'ERR_BUFFER_TOO_LARGE') {
+    throw new InvalidInputError('Decompressed data exceeds maxLength')
+  }
+
+  if (typeof code === 'string' && code.startsWith('Z_')) {
+    throw new InvalidInputError('Invalid gzip data')
+  }
+
+  throw error
 }
 
 export function nativeGzip(data: Uint8Array): Promise<Uint8Array> {
-  return callbackBytes(callback => gzip(data, callback))
+  return new Promise((resolve, reject) => {
+    zlib.gzip(data, (error, result) => error ? reject(error) : resolve(bytesOf(result)))
+  })
+}
+
+export function nativeGzipSync(data: Uint8Array): Uint8Array {
+  return bytesOf(zlib.gzipSync(data))
 }
 
 export async function nativeGunzip(data: Uint8Array, limit: number): Promise<Uint8Array> {
-  const options = limit < kMaxLength ? { maxOutputLength: Math.max(limit, 1) } : {}
-
   try {
-    const output = await callbackBytes(callback => gunzip(data, options, callback))
+    const result = await new Promise<Inflated>((resolve, reject) => {
+      zlib.gunzip(data, gunzipOptions(limit), (error, result) =>
+        error ? reject(error) : resolve(result as unknown as Inflated))
+    })
 
-    if (output.length > limit) {
-      throw new InvalidInputError('Decompressed data exceeds maxLength')
-    }
-
-    return output
+    return inflated(data, limit, result)
   } catch (error) {
-    const code = errorCode(error)
+    return gunzipError(error)
+  }
+}
 
-    if (code === 'ERR_BUFFER_TOO_LARGE') {
-      throw new InvalidInputError('Decompressed data exceeds maxLength')
-    }
-
-    if (typeof code === 'string' && code.startsWith('Z_')) {
-      throw new InvalidInputError('Invalid gzip data')
-    }
-
-    throw error
+export function nativeGunzipSync(data: Uint8Array, limit: number): Uint8Array {
+  try {
+    return inflated(data, limit, zlib.gunzipSync(data, gunzipOptions(limit)) as unknown as Inflated)
+  } catch (error) {
+    return gunzipError(error)
   }
 }

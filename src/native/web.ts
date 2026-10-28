@@ -679,6 +679,14 @@ export async function nativeGzip(data: Uint8Array): Promise<Uint8Array | undefin
     : undefined
 }
 
+export function nativeGzipSync(_data: Uint8Array): Uint8Array | undefined {
+  return undefined
+}
+
+export function nativeGunzipSync(_data: Uint8Array, _limit: number): Uint8Array | undefined {
+  return undefined
+}
+
 export async function nativeGunzip(
   data: Uint8Array,
   limit: number,
