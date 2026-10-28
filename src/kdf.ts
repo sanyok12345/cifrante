@@ -1,13 +1,13 @@
 import { assertLength, toBytes } from './bytes.js'
 import { InvalidInputError, UnsupportedError } from './errors.js'
-import { hmacSha1Sync, hmacSha256Sync, hmacSha512Sync, macAsync } from './hmac.js'
+import { hmacSha1Sync, hmacSha256Sync, hmacSha384Sync, hmacSha512Sync, macAsync } from './hmac.js'
 import type { SyncHmac } from './hmac.js'
 import { nativeHkdf, nativeHkdfSync, nativePbkdf2, nativePbkdf2Sync } from './native/web.js'
 import type { AbortOptions, Data } from './types.js'
 import { pbkdf2Wasm, pbkdf2WasmAsync } from './wasm/pbkdf2.js'
 import { PBKDF2_SLICE, SLICE, pacer, watch } from './yield.js'
 
-export type HashName = 'sha1' | 'sha256' | 'sha512'
+export type HashName = 'sha1' | 'sha256' | 'sha384' | 'sha512'
 
 export interface Pbkdf2Options extends AbortOptions {
   hash?: HashName
@@ -48,6 +48,10 @@ function resolveHash(name: HashName | undefined): {
       return { name: 'sha256', size: 32, mac: hmacSha256Sync }
     }
 
+    case 'sha384': {
+      return { name: 'sha384', size: 48, mac: hmacSha384Sync }
+    }
+
     case 'sha512': {
       return { name: 'sha512', size: 64, mac: hmacSha512Sync }
     }
@@ -57,7 +61,7 @@ function resolveHash(name: HashName | undefined): {
     }
 
     default: {
-      throw new UnsupportedError('Unsupported KDF hash; expected sha1, sha256 or sha512')
+      throw new UnsupportedError('Unsupported KDF hash; expected sha1, sha256, sha384 or sha512')
     }
   }
 }

@@ -9,7 +9,7 @@ import {
 } from '../errors.js'
 import { sha1Sync } from '../hash/sha1.js'
 import { sha256Sync } from '../hash/sha256.js'
-import { sha512Sync } from '../hash/sha512.js'
+import { sha384Sync, sha512Sync } from '../hash/sha512.js'
 import { math } from '../math.js'
 import { decodePrivateKey, decodePublicKey } from './encoding.js'
 import type { RsaKeyInput } from './encoding.js'
@@ -242,6 +242,11 @@ function oaep(
     case 'sha256':
       hash = sha256Sync
       hLength = 32
+      break
+
+    case 'sha384':
+      hash = sha384Sync
+      hLength = 48
       break
 
     case 'sha512':

@@ -3,7 +3,7 @@ import { AsyncDigest, SyncDigest } from './hash/hash.js'
 import type { DigestState, SyncHash, SyncHashState } from './hash/hash.js'
 import { sha1Sync } from './hash/sha1.js'
 import { sha256Sync } from './hash/sha256.js'
-import { sha512Sync } from './hash/sha512.js'
+import { sha384Sync, sha512Sync } from './hash/sha512.js'
 import { nativeHmac, nativeMac, nativeMacAvailable } from './native/web.js'
 import type { AbortOptions, Binary, Data } from './types.js'
 import { SLICE, forEachChunk, watch } from './yield.js'
@@ -25,6 +25,7 @@ export interface HmacState {
 export interface HMAC {
   sha1: Hmac
   sha256: Hmac
+  sha384: Hmac
   sha512: Hmac
 }
 
@@ -161,10 +162,12 @@ function createHmac(name: string, sync: SyncHmac): Hmac {
 
 export const hmacSha1Sync = /* @__PURE__ */ createSyncHmac('sha1', sha1Sync, 64)
 export const hmacSha256Sync = /* @__PURE__ */ createSyncHmac('sha256', sha256Sync, 64)
+export const hmacSha384Sync = /* @__PURE__ */ createSyncHmac('sha384', sha384Sync, 128)
 export const hmacSha512Sync = /* @__PURE__ */ createSyncHmac('sha512', sha512Sync, 128)
 
 export const hmac: HMAC = {
   sha1: /* @__PURE__ */ createHmac('sha1', hmacSha1Sync),
   sha256: /* @__PURE__ */ createHmac('sha256', hmacSha256Sync),
+  sha384: /* @__PURE__ */ createHmac('sha384', hmacSha384Sync),
   sha512: /* @__PURE__ */ createHmac('sha512', hmacSha512Sync),
 }

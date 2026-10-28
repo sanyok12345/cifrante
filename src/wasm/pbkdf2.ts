@@ -53,10 +53,15 @@ function check(status: number): void {
 }
 
 function parameters(hash: HashName) {
-  return {
-    algorithm: hash === 'sha1' ? 1 : hash === 'sha256' ? 256 : 512,
-    size: hash === 'sha1' ? 20 : hash === 'sha256' ? 32 : 64,
-    blockSize: hash === 'sha512' ? 128 : 64,
+  switch (hash) {
+    case 'sha1':
+      return { algorithm: 1, size: 20, blockSize: 64 }
+    case 'sha256':
+      return { algorithm: 256, size: 32, blockSize: 64 }
+    case 'sha384':
+      return { algorithm: 384, size: 48, blockSize: 128 }
+    case 'sha512':
+      return { algorithm: 512, size: 64, blockSize: 128 }
   }
 }
 

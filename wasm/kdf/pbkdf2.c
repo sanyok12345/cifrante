@@ -64,6 +64,9 @@ static void hash_init(Hash *hash)
   case 256:
     sha256_init(&hash->sha256);
     break;
+  case 384:
+    sha384_init(&hash->sha512);
+    break;
   case 512:
     sha512_init(&hash->sha512);
     break;
@@ -78,6 +81,7 @@ static uint32_t hash_update(Hash *hash, const uint8_t *data, size_t length)
     return sha1_update(&hash->sha1, data, length);
   case 256:
     return sha256_update(&hash->sha256, data, length);
+  case 384:
   case 512:
     return sha512_update(&hash->sha512, data, length);
   default:
@@ -93,6 +97,7 @@ static uint32_t hash_finalize(Hash *hash, uint8_t *digest)
     return sha1_finalize(&hash->sha1, digest);
   case 256:
     return sha256_finalize(&hash->sha256, digest);
+  case 384:
   case 512:
     return sha512_finalize(&hash->sha512, digest);
   default:
@@ -189,27 +194,27 @@ static void end32(unsigned int words)
   }
 }
 
-static void begin64(void)
+static void begin64(unsigned int words)
 {
   uint64_t *message = state.message.words64;
   uint64_t *accumulator = state.accumulator.words64;
 
-  for (unsigned int i = 8; i < 16; i++)
+  for (unsigned int i = words; i < 16; i++)
   {
     message[i] = 0;
   }
 
-  message[8] = 0x80ull << 56;
-  message[15] = (128u + 64u) * 8u;
+  message[words] = 0x80ull << 56;
+  message[15] = (128u + words * 8u) * 8u;
 
-  for (unsigned int i = 0; i < 8; i++)
+  for (unsigned int i = 0; i < words; i++)
   {
     accumulator[i] = wasm_load64_be(state.previous + i * 8);
     message[i] = accumulator[i];
   }
 }
 
-static void rounds64(uint64_t count)
+static void rounds64(uint64_t count, unsigned int words)
 {
   uint64_t *message = state.message.words64;
   uint64_t *chain = state.chain.words64;
@@ -226,15 +231,20 @@ static void rounds64(uint64_t count)
 
     sha512_compress(chain, message);
 
-    for (unsigned int i = 0; i < 8; i++)
+    for (unsigned int i = 0; i < words; i++)
     {
       message[i] = chain[i];
       chain[i] = outer[i];
     }
 
+    for (unsigned int i = words; i < 8; i++)
+    {
+      chain[i] = outer[i];
+    }
+
     sha512_compress(chain, message);
 
-    for (unsigned int i = 0; i < 8; i++)
+    for (unsigned int i = 0; i < words; i++)
     {
       message[i] = chain[i];
       accumulator[i] ^= chain[i];
@@ -242,9 +252,9 @@ static void rounds64(uint64_t count)
   }
 }
 
-static void end64(void)
+static void end64(unsigned int words)
 {
-  for (unsigned int i = 0; i < 8; i++)
+  for (unsigned int i = 0; i < words; i++)
   {
     wasm_store64_be(output + i * 8, state.accumulator.words64[i]);
   }
@@ -260,8 +270,11 @@ static void iterate_begin(void)
   case 256:
     begin32(8);
     break;
+  case 384:
+    begin64(6);
+    break;
   default:
-    begin64();
+    begin64(8);
     break;
   }
 }
@@ -276,8 +289,11 @@ static void iterate_rounds(uint64_t count)
   case 256:
     rounds32(count, 8, sha256_compress);
     break;
+  case 384:
+    rounds64(count, 6);
+    break;
   default:
-    rounds64(count);
+    rounds64(count, 8);
     break;
   }
 }
@@ -292,8 +308,11 @@ static void iterate_end(void)
   case 256:
     end32(8);
     break;
+  case 384:
+    end64(6);
+    break;
   default:
-    end64();
+    end64(8);
     break;
   }
 }
@@ -341,14 +360,15 @@ uint32_t init(uint32_t algorithm, uint32_t hash_password)
 {
   clear();
 
-  if ((algorithm != 1 && algorithm != 256 && algorithm != 512) || hash_password > 1)
+  if ((algorithm != 1 && algorithm != 256 && algorithm != 384 && algorithm != 512) || hash_password > 1)
   {
     return 2;
   }
 
   state.algorithm = algorithm;
-  state.block_size = algorithm == 512 ? 128 : 64;
+  state.block_size = algorithm >= 384 ? 128 : 64;
   state.digest_size = algorithm == 1 ? 20 : algorithm == 256 ? 32
+                                        : algorithm == 384   ? 48
                                                              : 64;
   state.hash_password = hash_password;
   state.phase = 1;
