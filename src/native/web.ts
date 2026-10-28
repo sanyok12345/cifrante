@@ -584,6 +584,14 @@ async function importX25519(subtle: SubtleCrypto, privateKey: Uint8Array): Promi
   }
 }
 
+export function nativeX25519PublicSync(_privateKey: Uint8Array): Uint8Array | undefined {
+  return undefined
+}
+
+export function nativeX25519SharedSync(_privateKey: Uint8Array, _publicKey: Uint8Array): Uint8Array | undefined {
+  return undefined
+}
+
 export function nativeX25519Public(privateKey: Uint8Array): Promise<Uint8Array | undefined> {
   return nativeX25519Shared(privateKey, X25519_BASE)
 }

@@ -589,16 +589,28 @@ export function nativeRsaPrivate(
   return key === undefined ? undefined : wiped(privateDecrypt({ key, padding: constants.RSA_NO_PADDING }, data))
 }
 
-function x25519Key(create: () => KeyObject): KeyObject | undefined {
+function x25519PrivateKey(privateKey: Uint8Array): KeyObject | undefined {
+  const der = x25519Pkcs8(privateKey)
+
   try {
-    return create()
+    return createPrivateKey({ key: der, format: 'der', type: 'pkcs8' })
+  } catch {
+    return undefined
+  } finally {
+    der.fill(0)
+  }
+}
+
+function x25519PublicKey(publicKey: Uint8Array): KeyObject | undefined {
+  try {
+    return createPublicKey({ key: x25519Spki(publicKey), format: 'der', type: 'spki' })
   } catch {
     return undefined
   }
 }
 
-export async function nativeX25519Public(privateKey: Uint8Array): Promise<Uint8Array | undefined> {
-  const secret = x25519Key(() => createPrivateKey({ key: Buffer.from(x25519Pkcs8(privateKey)), format: 'der', type: 'pkcs8' }))
+export function nativeX25519PublicSync(privateKey: Uint8Array): Uint8Array | undefined {
+  const secret = x25519PrivateKey(privateKey)
 
   if (secret === undefined) {
     return undefined
@@ -609,22 +621,30 @@ export async function nativeX25519Public(privateKey: Uint8Array): Promise<Uint8A
   return Uint8Array.from(spki.subarray(spki.length - 32))
 }
 
-export async function nativeX25519Shared(
-  privateKey: Uint8Array,
-  publicKey: Uint8Array,
-): Promise<Uint8Array | undefined> {
-  const secret = x25519Key(() => createPrivateKey({ key: Buffer.from(x25519Pkcs8(privateKey)), format: 'der', type: 'pkcs8' }))
-  const peer = x25519Key(() => createPublicKey({ key: Buffer.from(x25519Spki(publicKey)), format: 'der', type: 'spki' }))
+export function nativeX25519SharedSync(privateKey: Uint8Array, publicKey: Uint8Array): Uint8Array | undefined {
+  const secret = x25519PrivateKey(privateKey)
+  const peer = x25519PublicKey(publicKey)
 
   if (secret === undefined || peer === undefined) {
     return undefined
   }
 
   try {
-    return Uint8Array.from(crypto.diffieHellman({ privateKey: secret, publicKey: peer }))
+    return wiped(crypto.diffieHellman({ privateKey: secret, publicKey: peer }))
   } catch {
     return undefined
   }
+}
+
+export async function nativeX25519Public(privateKey: Uint8Array): Promise<Uint8Array | undefined> {
+  return nativeX25519PublicSync(privateKey)
+}
+
+export async function nativeX25519Shared(
+  privateKey: Uint8Array,
+  publicKey: Uint8Array,
+): Promise<Uint8Array | undefined> {
+  return nativeX25519SharedSync(privateKey, publicKey)
 }
 
 type Inflated = { buffer: Uint8Array, engine: { bytesWritten: number } }
