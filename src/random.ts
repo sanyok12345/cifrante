@@ -108,7 +108,7 @@ function fill<T extends Binary>(buffer: T, offset = 0, length?: number): T {
     throw new InvalidInputError('Random fill range exceeds the buffer')
   }
 
-  fillRandom(view.subarray(start, end) as Uint8Array<ArrayBuffer>)
+  fillRandom(view.subarray(start, end))
   return buffer
 }
 

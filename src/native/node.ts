@@ -87,7 +87,7 @@ function supportsCipher(name: string): boolean {
   return supports(name, ciphers, 'Cipher')
 }
 
-export function fillRandom(bytes: Uint8Array<ArrayBuffer>): void {
+export function fillRandom(bytes: Uint8Array): void {
   for (let offset = 0; offset < bytes.length; offset += 0x7fffffff) {
     randomFillSync(bytes.subarray(offset, offset + 0x7fffffff))
   }

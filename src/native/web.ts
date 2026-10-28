@@ -122,16 +122,28 @@ async function decrypt(
   }
 }
 
-export function fillRandom(bytes: Uint8Array<ArrayBuffer>): void {
+export function fillRandom(bytes: Uint8Array): void {
   const crypto = globalThis.crypto
 
   if (typeof crypto?.getRandomValues !== 'function') {
     throw new UnsupportedError('A cryptographically secure random generator is unavailable')
   }
 
+  const shared = typeof SharedArrayBuffer === 'function' && bytes.buffer instanceof SharedArrayBuffer
+  const scratch = shared ? new Uint8Array(Math.min(bytes.length, 65_536)) : undefined
+
   for (let offset = 0; offset < bytes.length; offset += 65_536) {
-    crypto.getRandomValues(bytes.subarray(offset, offset + 65_536))
+    const target = bytes.subarray(offset, offset + 65_536)
+    const output = scratch?.subarray(0, target.length) ?? target
+
+    crypto.getRandomValues(output as Uint8Array<ArrayBuffer>)
+
+    if (output !== target) {
+      target.set(output)
+    }
   }
+
+  scratch?.fill(0)
 }
 
 export function nativeHash(_name: string): NativeHash | undefined {
