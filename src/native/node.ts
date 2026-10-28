@@ -415,7 +415,7 @@ export function nativeGcm(key: Uint8Array): NativeAead {
   ): NativeSealed | undefined {
     const secret = prepare()
 
-    if (secret === undefined || nonce.length > 128) {
+    if (secret === undefined || nonce.length !== 12) {
       return undefined
     }
 
@@ -438,7 +438,7 @@ export function nativeGcm(key: Uint8Array): NativeAead {
   ): Uint8Array | undefined {
     const secret = prepare()
 
-    if (secret === undefined || nonce.length > 128) {
+    if (secret === undefined || nonce.length !== 12) {
       return undefined
     }
 
@@ -457,7 +457,7 @@ export function nativeGcm(key: Uint8Array): NativeAead {
   }
 
   return {
-    available: (nonce) => supportsCipher(name) && nonce.length <= 128,
+    available: (nonce) => supportsCipher(name) && nonce.length === 12,
     async encrypt(nonce, data, aad, tagLength) {
       const offloaded = data.length + aad.length >= OFFLOAD && web().available(nonce)
         ? await web().encrypt(nonce, data, aad, tagLength)
