@@ -37,6 +37,8 @@ export interface RsaOaepOptions {
 export interface RsaOaep {
   encrypt(data: Data): Promise<Uint8Array>
   decrypt(data: Binary): Promise<Uint8Array>
+  encryptSync(data: Data): Uint8Array
+  decryptSync(data: Binary): Uint8Array
 }
 
 export type { RsaJsonWebKey, RsaKeyInput } from './encoding.js'
@@ -44,7 +46,10 @@ export type { RsaJsonWebKey, RsaKeyInput } from './encoding.js'
 export interface RSA {
   publicKey(key: RsaKeyInput): RsaPublicKey
   privateKey(key: RsaKeyInput): RsaPrivateKey
-  raw(key: RsaPublicKey | RsaPrivateKey, data: Binary): Promise<Uint8Array>
+  raw: {
+    (key: RsaPublicKey | RsaPrivateKey, data: Binary): Promise<Uint8Array>
+    sync(key: RsaPublicKey | RsaPrivateKey, data: Binary): Uint8Array
+  }
   oaep(key: RsaPublicKey | RsaPrivateKey, options?: RsaOaepOptions): RsaOaep
 }
 
@@ -128,13 +133,13 @@ function checkKey(key: RsaPublicKey | RsaPrivateKey): CheckedKey {
   }
 }
 
-function operate(key: CheckedKey, value: bigint): Uint8Array<ArrayBuffer> {
+function operate(key: CheckedKey, value: bigint): Uint8Array {
   if (!key.private) {
     const padded = bigIntToBytes(value, key.length)
     const native = nativeRsaPublic(key.n, key.exponent, padded)
 
     if (native !== undefined) {
-      return new Uint8Array(native)
+      return native
     }
 
     return bigIntToBytes(math.modPow(value, key.exponent, key.n), key.length)
@@ -150,7 +155,7 @@ function operate(key: CheckedKey, value: bigint): Uint8Array<ArrayBuffer> {
     )
 
     if (native !== undefined) {
-      return new Uint8Array(native)
+      return native
     }
   }
 
@@ -170,10 +175,10 @@ function operate(key: CheckedKey, value: bigint): Uint8Array<ArrayBuffer> {
   throw new UnsupportedError('Unable to obtain an RSA blinding factor')
 }
 
-async function raw(
+function rawSync(
   key: RsaPublicKey | RsaPrivateKey,
   data: Binary,
-): Promise<Uint8Array> {
+): Uint8Array {
   const checked = checkKey(key)
   const input = toBinary(data)
 
@@ -188,6 +193,13 @@ async function raw(
   }
 
   return operate(checked, value)
+}
+
+async function raw(
+  key: RsaPublicKey | RsaPrivateKey,
+  data: Binary,
+): Promise<Uint8Array> {
+  return rawSync(key, data)
 }
 
 function mgf1(
@@ -271,67 +283,67 @@ function oaep(
   const native = nativeOaep(nativeKey, name, label)
   let labelHash: Uint8Array | undefined
 
-  return {
-    async encrypt(data: Data): Promise<Uint8Array> {
-      if (checked.private) {
-        throw new InvalidKeyError('RSA-OAEP encryption requires a public key')
-      }
+  function message(data: Data): Uint8Array {
+    if (checked.private) {
+      throw new InvalidKeyError('RSA-OAEP encryption requires a public key')
+    }
 
-      const message = toBytes(data)
+    const bytes = toBytes(data)
 
-      if (message.length > length - 2 * hLength - 2) {
-        throw new InvalidInputError(
-          'Message is too long for the RSA-OAEP modulus and hash',
-        )
-      }
+    if (bytes.length > length - 2 * hLength - 2) {
+      throw new InvalidInputError(
+        'Message is too long for the RSA-OAEP modulus and hash',
+      )
+    }
 
-      const result = await native.encrypt(message)
+    return bytes
+  }
 
-      if (result !== undefined) {
-        return Uint8Array.from(result)
-      }
+  function ciphertext(data: Binary): { bytes: Uint8Array, value: bigint } {
+    if (!checked.private) {
+      throw new InvalidKeyError('RSA-OAEP decryption requires a private key')
+    }
 
-      const encoded = new Uint8Array(length)
-      const seed = encoded.subarray(1, 1 + hLength)
-      const db = encoded.subarray(1 + hLength)
+    const bytes = toBinary(data)
 
+    if (bytes.length !== length) {
+      throw new AuthenticationError('RSA-OAEP decryption failed')
+    }
+
+    const value = bytesToBigInt(bytes)
+
+    if (value >= checked.n) {
+      throw new AuthenticationError('RSA-OAEP decryption failed')
+    }
+
+    return { bytes, value }
+  }
+
+  function seal(data: Uint8Array): Uint8Array {
+    const encoded = new Uint8Array(length)
+    const seed = encoded.subarray(1, 1 + hLength)
+    const db = encoded.subarray(1 + hLength)
+
+    try {
       db.set(labelHash ??= hash(label))
-      db[db.length - message.length - 1] = 1
-      db.set(message, db.length - message.length)
+      db[db.length - data.length - 1] = 1
+      db.set(data, db.length - data.length)
       seed.set(random(hLength))
       xorInto(db, mgf1(hash, seed, db.length))
       xorInto(seed, mgf1(hash, db, hLength))
 
       return operate(checked, bytesToBigInt(encoded))
-    },
+    } finally {
+      encoded.fill(0)
+    }
+  }
 
-    async decrypt(data: Binary): Promise<Uint8Array> {
-      if (!checked.private) {
-        throw new InvalidKeyError('RSA-OAEP decryption requires a private key')
-      }
+  function open(value: bigint): Uint8Array {
+    const encoded = operate(checked, value)
+    const seed = encoded.subarray(1, 1 + hLength)
+    const db = encoded.subarray(1 + hLength)
 
-      const ciphertext = toBinary(data)
-
-      if (ciphertext.length !== length) {
-        throw new AuthenticationError('RSA-OAEP decryption failed')
-      }
-
-      const value = bytesToBigInt(ciphertext)
-
-      if (value >= checked.n) {
-        throw new AuthenticationError('RSA-OAEP decryption failed')
-      }
-
-      const result = await native.decrypt(ciphertext)
-
-      if (result !== undefined) {
-        return Uint8Array.from(result)
-      }
-
-      const encoded = operate(checked, value)
-      const seed = encoded.subarray(1, 1 + hLength)
-      const db = encoded.subarray(1 + hLength)
-
+    try {
       xorInto(seed, mgf1(hash, db, hLength))
       xorInto(db, mgf1(hash, seed, db.length))
 
@@ -361,6 +373,34 @@ function oaep(
       }
 
       return db.slice(start)
+    } finally {
+      encoded.fill(0)
+    }
+  }
+
+  return {
+    async encrypt(data: Data): Promise<Uint8Array> {
+      const bytes = message(data)
+
+      return await native.encrypt(bytes) ?? seal(bytes)
+    },
+
+    encryptSync(data: Data): Uint8Array {
+      const bytes = message(data)
+
+      return native.encryptSync?.(bytes) ?? seal(bytes)
+    },
+
+    async decrypt(data: Binary): Promise<Uint8Array> {
+      const { bytes, value } = ciphertext(data)
+
+      return await native.decrypt(bytes) ?? open(value)
+    },
+
+    decryptSync(data: Binary): Uint8Array {
+      const { bytes, value } = ciphertext(data)
+
+      return native.decryptSync?.(bytes) ?? open(value)
     },
   }
 }
@@ -384,6 +424,6 @@ function privateKey(key: RsaKeyInput): RsaPrivateKey {
 export const rsa: RSA = {
   publicKey,
   privateKey,
-  raw,
+  raw: /* @__PURE__ */ Object.assign(raw, { sync: rawSync }),
   oaep,
 }

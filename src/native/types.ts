@@ -74,4 +74,6 @@ export interface NativeRsaKey {
 export interface NativeOaep {
   encrypt(data: Uint8Array): Promise<Uint8Array | undefined>
   decrypt(data: Uint8Array): Promise<Uint8Array | undefined>
+  encryptSync?(data: Uint8Array): Uint8Array | undefined
+  decryptSync?(data: Uint8Array): Uint8Array | undefined
 }

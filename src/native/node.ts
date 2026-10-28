@@ -505,59 +505,65 @@ function createRsaKey(key: NativeRsaKey): KeyObject | undefined {
     : createPrivateKey({ key: jwk, format: 'jwk' })
 }
 
+function wiped(buffer: Uint8Array): Uint8Array {
+  try {
+    return Uint8Array.from(buffer)
+  } finally {
+    buffer.fill(0)
+  }
+}
+
+function oaepError(error: unknown): never {
+  if (
+    error !== null &&
+    typeof error === 'object' &&
+    'code' in error &&
+    (
+      error.code === 'ERR_OSSL_RSA_OAEP_DECODING_ERROR' ||
+      error.code === 'ERR_OSSL_OAEP_DECODING_ERROR'
+    )
+  ) {
+    throw new AuthenticationError('RSA-OAEP decryption failed')
+  }
+
+  throw error
+}
+
 export function nativeOaep(
   key: NativeRsaKey,
   hash: string,
   label: Uint8Array,
 ): NativeOaep {
   const prepare = lazy(() => supportsHash(hash) ? createRsaKey(key) : undefined)
+  const padding = constants.RSA_PKCS1_OAEP_PADDING
+
+  function encryptSync(data: Uint8Array): Uint8Array | undefined {
+    const secret = prepare()
+
+    return secret === undefined
+      ? undefined
+      : wiped(publicEncrypt({ key: secret, padding, oaepHash: hash, oaepLabel: label }, data))
+  }
+
+  function decryptSync(data: Uint8Array): Uint8Array | undefined {
+    const secret = prepare()
+
+    if (secret === undefined) {
+      return undefined
+    }
+
+    try {
+      return wiped(privateDecrypt({ key: secret, padding, oaepHash: hash, oaepLabel: label }, data))
+    } catch (error) {
+      return oaepError(error)
+    }
+  }
 
   return {
-    async encrypt(data) {
-      const secret = prepare()
-
-      if (secret === undefined) {
-        return undefined
-      }
-
-      return new Uint8Array(publicEncrypt({
-        key: secret,
-        padding: constants.RSA_PKCS1_OAEP_PADDING,
-        oaepHash: hash,
-        oaepLabel: label,
-      }, data))
-    },
-
-    async decrypt(data) {
-      const secret = prepare()
-
-      if (secret === undefined) {
-        return undefined
-      }
-
-      try {
-        return new Uint8Array(privateDecrypt({
-          key: secret,
-          padding: constants.RSA_PKCS1_OAEP_PADDING,
-          oaepHash: hash,
-          oaepLabel: label,
-        }, data))
-      } catch (error) {
-        if (
-          error !== null &&
-          typeof error === 'object' &&
-          'code' in error &&
-          (
-            error.code === 'ERR_OSSL_RSA_OAEP_DECODING_ERROR' ||
-            error.code === 'ERR_OSSL_OAEP_DECODING_ERROR'
-          )
-        ) {
-          throw new AuthenticationError('RSA-OAEP decryption failed')
-        }
-
-        throw error
-      }
-    },
+    encrypt: async data => encryptSync(data),
+    decrypt: async data => decryptSync(data),
+    encryptSync,
+    decryptSync,
   }
 }
 
@@ -568,9 +574,7 @@ export function nativeRsaPublic(
 ): Uint8Array | undefined {
   const key = createRsaKey({ n, e })
 
-  return key === undefined ? undefined : new Uint8Array(
-    publicEncrypt({ key, padding: constants.RSA_NO_PADDING }, data),
-  )
+  return key === undefined ? undefined : wiped(publicEncrypt({ key, padding: constants.RSA_NO_PADDING }, data))
 }
 
 export function nativeRsaPrivate(
@@ -582,9 +586,7 @@ export function nativeRsaPrivate(
 ): Uint8Array | undefined {
   const key = createRsaKey({ n, d, p, q })
 
-  return key === undefined ? undefined : new Uint8Array(
-    privateDecrypt({ key, padding: constants.RSA_NO_PADDING }, data),
-  )
+  return key === undefined ? undefined : wiped(privateDecrypt({ key, padding: constants.RSA_NO_PADDING }, data))
 }
 
 function x25519Key(create: () => KeyObject): KeyObject | undefined {
