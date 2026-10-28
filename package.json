@@ -1,6 +1,6 @@
 {
   "name": "cifrante",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Lightweight cryptography, native when possible and portable by design",
   "license": "MIT",
   "author": "sanyok12345",
@@ -58,13 +58,13 @@
     "typescript": "^7.0.2"
   },
   "optionalDependencies": {
-    "@cifrante/darwin-arm64": "0.6.0",
-    "@cifrante/darwin-x64": "0.6.0",
-    "@cifrante/linux-arm64-gnu": "0.6.0",
-    "@cifrante/linux-arm64-musl": "0.6.0",
-    "@cifrante/linux-x64-gnu": "0.6.0",
-    "@cifrante/linux-x64-musl": "0.6.0",
-    "@cifrante/win32-arm64": "0.6.0",
-    "@cifrante/win32-x64": "0.6.0"
+    "@cifrante/darwin-arm64": "0.7.0",
+    "@cifrante/darwin-x64": "0.7.0",
+    "@cifrante/linux-arm64-gnu": "0.7.0",
+    "@cifrante/linux-arm64-musl": "0.7.0",
+    "@cifrante/linux-x64-gnu": "0.7.0",
+    "@cifrante/linux-x64-musl": "0.7.0",
+    "@cifrante/win32-arm64": "0.7.0",
+    "@cifrante/win32-x64": "0.7.0"
   }
 }
