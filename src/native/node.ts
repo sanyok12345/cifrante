@@ -1,4 +1,5 @@
 import * as crypto from 'node:crypto'
+import { kMaxLength } from 'node:buffer'
 import { createRequire } from 'node:module'
 import { gunzip, gzip } from 'node:zlib'
 import {
@@ -627,10 +628,10 @@ export function nativeGzip(data: Uint8Array): Promise<Uint8Array> {
 }
 
 export async function nativeGunzip(data: Uint8Array, limit: number): Promise<Uint8Array> {
-  const maxOutputLength = Math.min(Math.max(limit, 1), Number.MAX_SAFE_INTEGER)
+  const options = limit < kMaxLength ? { maxOutputLength: Math.max(limit, 1) } : {}
 
   try {
-    const output = await callbackBytes(callback => gunzip(data, { maxOutputLength }, callback))
+    const output = await callbackBytes(callback => gunzip(data, options, callback))
 
     if (output.length > limit) {
       throw new InvalidInputError('Decompressed data exceeds maxLength')
