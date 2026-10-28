@@ -39,7 +39,7 @@ export interface RsaOaep {
   decrypt(data: Binary): Promise<Uint8Array>
 }
 
-export type { RsaKeyInput } from './encoding.js'
+export type { RsaJsonWebKey, RsaKeyInput } from './encoding.js'
 
 export interface RSA {
   publicKey(key: RsaKeyInput): RsaPublicKey

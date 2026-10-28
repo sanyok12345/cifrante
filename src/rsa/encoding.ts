@@ -4,7 +4,24 @@ import { InvalidInputError, InvalidKeyError, UnsupportedError } from '../errors.
 import type { Binary } from '../types.js'
 import type { RsaPrivateKey, RsaPublicKey } from './rsa.js'
 
-export type RsaKeyInput = string | Binary | JsonWebKey
+export interface RsaJsonWebKey {
+  kty?: string
+  use?: string
+  key_ops?: string[]
+  alg?: string
+  kid?: string
+  ext?: boolean
+  n?: string
+  e?: string
+  d?: string
+  p?: string
+  q?: string
+  dp?: string
+  dq?: string
+  qi?: string
+}
+
+export type RsaKeyInput = string | Binary | RsaJsonWebKey
 
 type Parser<T> = (der: Uint8Array) => T
 
@@ -103,7 +120,7 @@ function decode<T>(
   input: RsaKeyInput,
   pemLabels: Record<string, Parser<T>>,
   derFormats: Parser<T>[],
-  jwk: (key: JsonWebKey) => T,
+  jwk: (key: RsaJsonWebKey) => T,
 ): T {
   if (typeof input === 'string') {
     const { label, der } = pem(input)
