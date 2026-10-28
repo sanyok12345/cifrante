@@ -1,5 +1,5 @@
 import { fillRandom } from './native/web.js'
-import { assertLength, bytesToBigInt, encodeHex, encodeBase64 } from './bytes.js'
+import { assertLength, bytesToBigInt, encodeHex, encodeBase64, toBinaryView } from './bytes.js'
 import { InvalidInputError, UnsupportedError } from './errors.js'
 import type { Binary } from './types.js'
 
@@ -92,16 +92,7 @@ function int(max: number | bigint): number | bigint {
 }
 
 function fill<T extends Binary>(buffer: T, offset = 0, length?: number): T {
-  let view: Uint8Array
-
-  try {
-    view = ArrayBuffer.isView(buffer)
-      ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
-      : new Uint8Array(buffer as ArrayBuffer)
-  } catch {
-    throw new InvalidInputError('Expected an ArrayBuffer or an ArrayBuffer view')
-  }
-
+  const view = toBinaryView(buffer)
   const size = (buffer as { BYTES_PER_ELEMENT?: number }).BYTES_PER_ELEMENT ?? 1
 
   assertLength(offset, 'Random fill offset')
