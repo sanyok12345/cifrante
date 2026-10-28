@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include "modes.h"
+#include "x25519.h"
 
 typedef struct
 {
@@ -281,6 +282,29 @@ static napi_value ctr(napi_env env, napi_callback_info info)
   return NULL;
 }
 
+static napi_value x25519(napi_env env, napi_callback_info info)
+{
+  size_t count = 3;
+  napi_value arguments[3];
+  Bytes scalar, point, output;
+
+  if (
+      napi_get_cb_info(env, info, &count, arguments, NULL, NULL) != napi_ok || count < 3 || !bytes(env, arguments[0], &scalar) || !bytes(env, arguments[1], &point) || !bytes(env, arguments[2], &output))
+  {
+    napi_throw_type_error(env, NULL, "Expected scalar, point and output as Uint8Array");
+    return NULL;
+  }
+
+  if (scalar.length != 32 || point.length != 32 || output.length != 32)
+  {
+    napi_throw_range_error(env, NULL, "X25519 expects a 32-byte scalar, point and output");
+    return NULL;
+  }
+
+  cifrante_x25519(output.data, scalar.data, point.data);
+  return NULL;
+}
+
 static napi_value supported(napi_env env, napi_callback_info info)
 {
   napi_value result;
@@ -300,6 +324,7 @@ NAPI_MODULE_INIT()
       {"decryptAsync", NULL, decrypt_async, NULL, NULL, NULL, napi_enumerable, NULL},
       {"expand", NULL, expand, NULL, NULL, NULL, napi_enumerable, NULL},
       {"ctr", NULL, ctr, NULL, NULL, NULL, napi_enumerable, NULL},
+      {"x25519", NULL, x25519, NULL, NULL, NULL, napi_enumerable, NULL},
   };
 
   napi_define_properties(env, exports, sizeof(properties) / sizeof(properties[0]), properties);

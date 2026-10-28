@@ -108,7 +108,12 @@ function adaptHash(hash: crypto.Hash | crypto.Hmac): NativeHash {
 
 const ADDON_EXPORTS = ['encrypt', 'decrypt', 'encryptAsync', 'decryptAsync', 'expand', 'ctr'] as const
 
-const addon = /* @__PURE__ */ lazy((): NativeAddon | undefined => {
+type AddonModule = Partial<NativeAddon> & {
+  supported?(): boolean
+  x25519?(scalar: Uint8Array, point: Uint8Array, output: Uint8Array): void
+}
+
+const addonModule = /* @__PURE__ */ lazy((): AddonModule | undefined => {
   if (process.env.CIFRANTE_NATIVE === '0') {
     return undefined
   }
@@ -119,11 +124,7 @@ const addon = /* @__PURE__ */ lazy((): NativeAddon | undefined => {
 
   for (const candidate of candidates) {
     try {
-      const module = load(candidate) as NativeAddon & { supported(): boolean }
-
-      if (ADDON_EXPORTS.every(name => typeof module[name] === 'function') && module.supported()) {
-        return module
-      }
+      return load(candidate) as AddonModule
     } catch {
       continue
     }
@@ -131,6 +132,22 @@ const addon = /* @__PURE__ */ lazy((): NativeAddon | undefined => {
 
   return undefined
 })
+
+const addon = /* @__PURE__ */ lazy((): NativeAddon | undefined => {
+  const module = addonModule()
+
+  return module && ADDON_EXPORTS.every(name => typeof module[name] === 'function') && module.supported?.()
+    ? module as NativeAddon
+    : undefined
+})
+
+const addonX25519 = /* @__PURE__ */ lazy(() => {
+  const x25519 = addonModule()?.x25519
+
+  return typeof x25519 === 'function' ? x25519 : undefined
+})
+
+const X25519_BASE = /* @__PURE__ */ new Uint8Array(32).fill(9, 0, 1)
 
 const zlibCrc32 = (zlib as { crc32?: (data: Uint8Array, value: number) => number }).crc32
 
@@ -609,7 +626,26 @@ function x25519PublicKey(publicKey: Uint8Array): KeyObject | undefined {
   }
 }
 
+function addonScalarMult(scalar: Uint8Array, point: Uint8Array): Uint8Array | undefined {
+  const x25519 = addonX25519()
+
+  if (x25519 === undefined) {
+    return undefined
+  }
+
+  const output = new Uint8Array(32)
+  x25519(scalar, point, output)
+
+  return output
+}
+
 export function nativeX25519PublicSync(privateKey: Uint8Array): Uint8Array | undefined {
+  const accelerated = addonScalarMult(privateKey, X25519_BASE)
+
+  if (accelerated !== undefined) {
+    return accelerated
+  }
+
   const secret = x25519PrivateKey(privateKey)
 
   if (secret === undefined) {
@@ -622,6 +658,12 @@ export function nativeX25519PublicSync(privateKey: Uint8Array): Uint8Array | und
 }
 
 export function nativeX25519SharedSync(privateKey: Uint8Array, publicKey: Uint8Array): Uint8Array | undefined {
+  const accelerated = addonScalarMult(privateKey, publicKey)
+
+  if (accelerated !== undefined) {
+    return accelerated
+  }
+
   const secret = x25519PrivateKey(privateKey)
   const peer = x25519PublicKey(publicKey)
 
