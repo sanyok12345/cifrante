@@ -1,5 +1,5 @@
 import { assertLength, toBinary, toBytes } from '../bytes.js'
-import { nativeGunzip, nativeGunzipSync, nativeGzip, nativeGzipSync } from '../native/web.js'
+import { GZIP_OFFLOAD, nativeGunzip, nativeGunzipSync, nativeGzip, nativeGzipSync } from '../native/web.js'
 import type { AbortOptions, Binary, Data } from '../types.js'
 import { watch } from '../yield.js'
 import { compressGzip, decompressGzip } from './container.js'
@@ -39,11 +39,18 @@ async function compress(data: Data, options?: AbortOptions): Promise<Uint8Array>
   guard()
 
   const input = toBytes(data)
-  const native = await nativeGzip(input)
 
-  guard()
+  if (input.length >= GZIP_OFFLOAD.compress) {
+    const offloaded = await nativeGzip(input)
 
-  return native ?? compressGzip(input)
+    guard()
+
+    if (offloaded !== undefined) {
+      return offloaded
+    }
+  }
+
+  return nativeGzipSync(input) ?? compressGzip(input)
 }
 
 function compressSync(data: Data): Uint8Array {
@@ -59,11 +66,18 @@ async function decompress(data: Binary, options?: GzipOptions): Promise<Uint8Arr
 
   const maxLength = limit(options)
   const input = toBinary(data)
-  const native = await nativeGunzip(input, maxLength, guard)
 
-  guard()
+  if (input.length >= GZIP_OFFLOAD.decompress) {
+    const offloaded = await nativeGunzip(input, maxLength, guard)
 
-  return native ?? decompressGzip(input, maxLength)
+    guard()
+
+    if (offloaded !== undefined) {
+      return offloaded
+    }
+  }
+
+  return nativeGunzipSync(input, maxLength) ?? decompressGzip(input, maxLength)
 }
 
 function decompressSync(data: Binary, options?: Omit<GzipOptions, 'signal'>): Uint8Array {

@@ -626,6 +626,8 @@ export async function nativeX25519Shared(
   }
 }
 
+export const GZIP_OFFLOAD = { compress: 1 << 22, decompress: 1 << 20 }
+
 type Compression = typeof CompressionStream | typeof DecompressionStream
 
 async function pipe(

@@ -689,6 +689,8 @@ export async function nativeX25519Shared(
   return nativeX25519SharedSync(privateKey, publicKey)
 }
 
+export const GZIP_OFFLOAD = { compress: 1 << 17, decompress: 1 << 20 }
+
 type Inflated = { buffer: Uint8Array, engine: { bytesWritten: number } }
 
 function bytesOf(buffer: Uint8Array): Uint8Array {
