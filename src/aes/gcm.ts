@@ -4,32 +4,17 @@ import { lazy } from '../lazy.js'
 import { SLICE, watch } from '../yield.js'
 import { aesWasmAvailable, createAesWasm } from '../wasm/aes.js'
 import { nativeGcm } from '../native/web.js'
-import type { AbortOptions, Binary, Data, Disposal } from '../types.js'
-import type { Backend } from './aes.js'
+import type { AeadCipher, AeadOptions, Sealed } from '../aead.js'
+import type { Binary, Data, Disposal } from '../types.js'
 import { AesBlock, DISPOSE, disposable, keyBytes, lifecycle } from './block.js'
 
 export interface GcmOptions {
   tagLength?: 96 | 104 | 112 | 120 | 128
 }
 
-export interface GcmOperationOptions extends AbortOptions {
-  nonce: Binary
-  aad?: Data
-}
+export type GcmOperationOptions = AeadOptions
 
-export interface Sealed {
-  ciphertext: Uint8Array
-  tag: Uint8Array
-}
-
-export interface AeadCipher {
-  encrypt(data: Data, options: GcmOperationOptions): Promise<Sealed>
-  decrypt(data: Sealed, options: GcmOperationOptions): Promise<Uint8Array>
-  encryptSync(data: Data, options: GcmOperationOptions): Sealed
-  decryptSync(data: Sealed, options: GcmOperationOptions): Uint8Array
-  dispose(): void
-  readonly backend: Backend
-}
+export type { AeadCipher, Sealed } from '../aead.js'
 
 class GHash {
   private readonly h = new Uint32Array(4)

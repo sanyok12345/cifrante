@@ -1,3 +1,4 @@
+import type { Backend } from '../aead.js'
 import type { AbortOptions, Binary, Data, Disposal } from '../types.js'
 import { cbc } from './cbc.js'
 import type { CbcOptions } from './cbc.js'
@@ -6,7 +7,7 @@ import { gcm } from './gcm.js'
 import type { AeadCipher, GcmOptions } from './gcm.js'
 import { ige } from './ige.js'
 
-export type Backend = 'native' | 'wasm' | 'js'
+export type { Backend }
 
 export interface CipherOptions extends AbortOptions {
   iv: Binary
