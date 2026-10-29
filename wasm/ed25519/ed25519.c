@@ -23,6 +23,7 @@ static Field curve_d;
 static Field curve_d2;
 static Field sqrt_minus_one;
 static Point base;
+static Point table[64][16];
 static uint32_t ready;
 
 static void point_identity(Point *p)
@@ -116,25 +117,60 @@ static void point_double(Point *r, const Point *p)
   fe_mul(r->z, f, g);
 }
 
-static void point_multiply(Point *r, const uint8_t scalar[32], const Point *p)
+static void base_multiply(Point *r, const uint8_t scalar[32])
 {
   Point q;
   Point s;
 
   point_identity(&q);
 
-  for (int i = 255; i >= 0; i--)
+  for (int i = 0; i < 64; i++)
   {
-    uint32_t bit = (scalar[i >> 3] >> (i & 7)) & 1;
+    uint32_t digit = (scalar[i >> 1] >> ((i & 1) * 4)) & 15;
 
-    point_double(&q, &q);
-    point_add(&s, &q, p);
-    point_cmov(&q, &s, bit);
+    point_identity(&s);
+
+    for (uint32_t j = 1; j < 16; j++)
+    {
+      point_cmov(&s, &table[i][j], ((j ^ digit) - 1) >> 31);
+    }
+
+    point_add(&q, &q, &s);
   }
 
   point_copy(r, &q);
   wasm_clear(&q, sizeof(q));
   wasm_clear(&s, sizeof(s));
+}
+
+static void public_multiply(Point *r, const uint8_t scalar[32], const Point *p)
+{
+  Point multiples[16];
+
+  point_identity(&multiples[0]);
+  point_copy(&multiples[1], p);
+
+  for (int j = 2; j < 16; j++)
+  {
+    point_add(&multiples[j], &multiples[j - 1], p);
+  }
+
+  point_identity(r);
+
+  for (int i = 63; i >= 0; i--)
+  {
+    for (int k = 0; k < 4; k++)
+    {
+      point_double(r, r);
+    }
+
+    uint32_t digit = (scalar[i >> 1] >> ((i & 1) * 4)) & 15;
+
+    if (digit != 0)
+    {
+      point_add(r, r, &multiples[digit]);
+    }
+  }
 }
 
 static void point_encode(uint8_t out[32], const Point *p)
@@ -250,6 +286,26 @@ static void prepare(void)
   fe_mul(y, y, t);
   fe_tobytes(bytes, y);
   point_decode(&base, bytes);
+
+  Point power;
+
+  point_copy(&power, &base);
+
+  for (int i = 0; i < 64; i++)
+  {
+    point_identity(&table[i][0]);
+    point_copy(&table[i][1], &power);
+
+    for (int j = 2; j < 16; j++)
+    {
+      point_add(&table[i][j], &table[i][j - 1], &power);
+    }
+
+    for (int k = 0; k < 4; k++)
+    {
+      point_double(&power, &power);
+    }
+  }
 
   ready = 1;
 }
@@ -444,7 +500,7 @@ void public_key(uint32_t seed, uint32_t output)
 
   prepare();
   expand((const uint8_t *)(uintptr_t)seed, scalar, prefix);
-  point_multiply(&a, scalar, &base);
+  base_multiply(&a, scalar);
   point_encode((uint8_t *)(uintptr_t)output, &a);
 
   wasm_clear(scalar, sizeof(scalar));
@@ -466,10 +522,10 @@ void sign(uint32_t seed, uint32_t message, uint32_t length, uint32_t output)
 
   prepare();
   expand((const uint8_t *)(uintptr_t)seed, scalar, prefix);
-  point_multiply(&point, scalar, &base);
+  base_multiply(&point, scalar);
   point_encode(public, &point);
   hash_reduce(nonce, prefix, NULL, data, length);
-  point_multiply(&point, nonce, &base);
+  base_multiply(&point, nonce);
   point_encode(signature, &point);
   hash_reduce(challenge, signature, public, data, length);
   scalar_multiply_add(signature + 32, challenge, scalar, nonce);
@@ -502,8 +558,8 @@ uint32_t verify(uint32_t key, uint32_t message, uint32_t length, uint32_t input)
 
   hash_reduce(challenge, signature, public, (const uint8_t *)(uintptr_t)message, length);
   point_negate(&a, &a);
-  point_multiply(&left, signature + 32, &base);
-  point_multiply(&right, challenge, &a);
+  base_multiply(&left, signature + 32);
+  public_multiply(&right, challenge, &a);
   point_add(&left, &left, &right);
   point_encode(encoded, &left);
 
