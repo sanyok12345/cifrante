@@ -1,5 +1,6 @@
 import { bytesToBigInt, toBinary, toBytesView } from '../bytes.js'
 import { InvalidKeyError } from '../errors.js'
+import { lazy } from '../lazy.js'
 import {
   nativeEd25519PublicSync,
   nativeEd25519Sign,
@@ -40,6 +41,22 @@ const FIELD = (1n << 255n) - 19n
 const ORDER = (1n << 252n) + 27742317777372353535851937790883648493n
 const TORSION = 0x5fc536d880238b13933c6d305acdfd5f098eff289f4c345b027b2c28f95e826n
 const SMALL_ORDER = new Set([0n, 1n, FIELD - 1n, TORSION, FIELD - TORSION])
+
+const PROBE = /* @__PURE__ */ new Uint8Array(32).fill(7)
+
+const nativeConforms = /* @__PURE__ */ lazy(async (): Promise<boolean> => {
+  const empty = new Uint8Array(0)
+  const expected = ed25519SignWasm(PROBE, empty) ?? signJs(PROBE, empty)
+  const signed = await nativeEd25519Sign(PROBE, empty)
+
+  if (signed === undefined || signed.length !== 64 || signed.some((byte, i) => byte !== expected[i])) {
+    return false
+  }
+
+  const publicKey = ed25519PublicWasm(PROBE) ?? publicKeyJs(PROBE)
+
+  return await nativeEd25519Verify(publicKey, empty, expected) === true
+})
 
 function key(value: Binary, name: string): Uint8Array<ArrayBuffer> {
   const bytes = toBinary(value)
@@ -96,7 +113,9 @@ async function sign(privateKey: Binary, message: Data): Promise<Uint8Array> {
   const data = toBytesView(message)
 
   try {
-    return await nativeEd25519Sign(seed, data) ?? ed25519SignWasm(seed, data) ?? signJs(seed, data)
+    const native = await nativeConforms() ? await nativeEd25519Sign(seed, data) : undefined
+
+    return native ?? ed25519SignWasm(seed, data) ?? signJs(seed, data)
   } finally {
     seed.fill(0)
   }
@@ -123,7 +142,9 @@ async function verify(publicKey: Binary, message: Data, signature: Binary): Prom
     return false
   }
 
-  return await nativeEd25519Verify(point, data, bytes) ?? ed25519VerifyWasm(point, data, bytes) ?? verifyJs(point, data, bytes)
+  const native = await nativeConforms() ? await nativeEd25519Verify(point, data, bytes) : undefined
+
+  return native ?? ed25519VerifyWasm(point, data, bytes) ?? verifyJs(point, data, bytes)
 }
 
 function keysSync(): Ed25519KeyPair {
