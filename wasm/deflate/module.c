@@ -17,12 +17,6 @@ uint32_t heap_base(void)
   return (uint32_t)(uintptr_t)&__heap_base;
 }
 
-WASM_EXPORT("bound")
-uint32_t bound(uint32_t length)
-{
-  return (uint32_t)deflate_bound(length);
-}
-
 WASM_EXPORT("compress")
 uint32_t compress(uint32_t input, uint32_t length, uint32_t output)
 {
