@@ -9,7 +9,7 @@ import {
 import { random } from '../random.js'
 import type { Binary } from '../types.js'
 import { scalarMultWasm } from '../wasm/x25519.js'
-import { scalarMult } from './field.js'
+import { scalarMult } from './ladder.js'
 
 export interface X25519KeyPair {
   privateKey: Uint8Array

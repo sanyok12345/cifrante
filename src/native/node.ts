@@ -39,7 +39,8 @@ import {
 } from './web.js'
 import type { Format } from '../compression/formats.js'
 import { rsaJwk } from '../rsa/key.js'
-import { x25519Pkcs8, x25519Spki } from './x25519.js'
+import { curvePkcs8, curveSpki } from './keys.js'
+import type { Curve } from './keys.js'
 import type {
   NativeAead,
   NativeCipher,
@@ -607,8 +608,8 @@ export function nativeRsaPrivate(
   return key === undefined ? undefined : wiped(privateDecrypt({ key, padding: constants.RSA_NO_PADDING }, data))
 }
 
-function x25519PrivateKey(privateKey: Uint8Array): KeyObject | undefined {
-  const der = x25519Pkcs8(privateKey)
+function curvePrivateKey(curve: Curve, privateKey: Uint8Array): KeyObject | undefined {
+  const der = curvePkcs8(curve, privateKey)
 
   try {
     return createPrivateKey({ key: der, format: 'der', type: 'pkcs8' })
@@ -619,9 +620,15 @@ function x25519PrivateKey(privateKey: Uint8Array): KeyObject | undefined {
   }
 }
 
-function x25519PublicKey(publicKey: Uint8Array): KeyObject | undefined {
+function exportedPublicKey(secret: KeyObject): Uint8Array {
+  const spki = createPublicKey(secret).export({ format: 'der', type: 'spki' })
+
+  return Uint8Array.from(spki.subarray(spki.length - 32))
+}
+
+function curvePublicKey(curve: Curve, publicKey: Uint8Array): KeyObject | undefined {
   try {
-    return createPublicKey({ key: x25519Spki(publicKey), format: 'der', type: 'spki' })
+    return createPublicKey({ key: curveSpki(curve, publicKey), format: 'der', type: 'spki' })
   } catch {
     return undefined
   }
@@ -647,15 +654,9 @@ export function nativeX25519PublicSync(privateKey: Uint8Array): Uint8Array | und
     return accelerated
   }
 
-  const secret = x25519PrivateKey(privateKey)
+  const secret = curvePrivateKey('X25519', privateKey)
 
-  if (secret === undefined) {
-    return undefined
-  }
-
-  const spki = createPublicKey(secret).export({ format: 'der', type: 'spki' })
-
-  return Uint8Array.from(spki.subarray(spki.length - 32))
+  return secret === undefined ? undefined : exportedPublicKey(secret)
 }
 
 export function nativeX25519SharedSync(privateKey: Uint8Array, publicKey: Uint8Array): Uint8Array | undefined {
@@ -665,8 +666,8 @@ export function nativeX25519SharedSync(privateKey: Uint8Array, publicKey: Uint8A
     return accelerated
   }
 
-  const secret = x25519PrivateKey(privateKey)
-  const peer = x25519PublicKey(publicKey)
+  const secret = curvePrivateKey('X25519', privateKey)
+  const peer = curvePublicKey('X25519', publicKey)
 
   if (secret === undefined || peer === undefined) {
     return undefined
@@ -688,6 +689,40 @@ export async function nativeX25519Shared(
   publicKey: Uint8Array,
 ): Promise<Uint8Array | undefined> {
   return nativeX25519SharedSync(privateKey, publicKey)
+}
+
+export function nativeEd25519PublicSync(seed: Uint8Array): Uint8Array | undefined {
+  const secret = curvePrivateKey('Ed25519', seed)
+
+  return secret === undefined ? undefined : exportedPublicKey(secret)
+}
+
+export function nativeEd25519SignSync(seed: Uint8Array, message: Uint8Array): Uint8Array | undefined {
+  const secret = curvePrivateKey('Ed25519', seed)
+
+  return secret === undefined ? undefined : Uint8Array.from(crypto.sign(null, message, secret))
+}
+
+export function nativeEd25519VerifySync(publicKey: Uint8Array, message: Uint8Array, signature: Uint8Array): boolean | undefined {
+  const key = curvePublicKey('Ed25519', publicKey)
+
+  if (key === undefined) {
+    return undefined
+  }
+
+  try {
+    return crypto.verify(null, message, key, signature)
+  } catch {
+    return false
+  }
+}
+
+export async function nativeEd25519Sign(seed: Uint8Array, message: Uint8Array): Promise<Uint8Array | undefined> {
+  return nativeEd25519SignSync(seed, message)
+}
+
+export async function nativeEd25519Verify(publicKey: Uint8Array, message: Uint8Array, signature: Uint8Array): Promise<boolean | undefined> {
+  return nativeEd25519VerifySync(publicKey, message, signature)
 }
 
 export const COMPRESSION_OFFLOAD = { compress: 1 << 17, decompress: 1 << 20 }

@@ -2,7 +2,7 @@ import { bigIntToBytes, encodeBase64 } from '../bytes.js'
 import { AuthenticationError, InvalidInputError, UnsupportedError } from '../errors.js'
 import { lazy } from '../lazy.js'
 import { rsaJwk } from '../rsa/key.js'
-import { x25519Pkcs8 } from './x25519.js'
+import { curvePkcs8 } from './keys.js'
 import type { Format } from '../compression/formats.js'
 import type {
   NativeAead,
@@ -576,7 +576,7 @@ export function nativeOaep(
 const X25519_BASE = /* @__PURE__ */ new Uint8Array(32).fill(9, 0, 1)
 
 async function importX25519(subtle: SubtleCrypto, privateKey: Uint8Array): Promise<CryptoKey> {
-  const der = x25519Pkcs8(privateKey)
+  const der = curvePkcs8('X25519', privateKey)
 
   try {
     return await subtle.importKey('pkcs8', der, 'X25519', false, ['deriveBits'])
@@ -621,6 +621,64 @@ export async function nativeX25519Shared(
   } catch (error) {
     if (errorName(error) === 'OperationError') {
       return undefined
+    }
+
+    throw error
+  }
+}
+
+export function nativeEd25519PublicSync(_seed: Uint8Array): Uint8Array | undefined {
+  return undefined
+}
+
+export function nativeEd25519SignSync(_seed: Uint8Array, _message: Uint8Array): Uint8Array | undefined {
+  return undefined
+}
+
+export function nativeEd25519VerifySync(_publicKey: Uint8Array, _message: Uint8Array, _signature: Uint8Array): boolean | undefined {
+  return undefined
+}
+
+export async function nativeEd25519Sign(seed: Uint8Array, message: Uint8Array): Promise<Uint8Array | undefined> {
+  const subtle = globalThis.crypto?.subtle
+
+  if (!subtle) {
+    return undefined
+  }
+
+  const output = await supported(subtle, 'Ed25519', async () => {
+    const der = curvePkcs8('Ed25519', seed)
+
+    try {
+      const key = await subtle.importKey('pkcs8', der, 'Ed25519', false, ['sign'])
+      return subtle.sign('Ed25519', key, source(message))
+    } finally {
+      der.fill(0)
+    }
+  })
+
+  return output === undefined ? undefined : new Uint8Array(output)
+}
+
+export async function nativeEd25519Verify(
+  publicKey: Uint8Array,
+  message: Uint8Array,
+  signature: Uint8Array,
+): Promise<boolean | undefined> {
+  const subtle = globalThis.crypto?.subtle
+
+  if (!subtle) {
+    return undefined
+  }
+
+  try {
+    return await supported(subtle, 'Ed25519', async () => {
+      const key = await subtle.importKey('raw', source(publicKey), 'Ed25519', false, ['verify'])
+      return subtle.verify('Ed25519', key, source(signature), source(message))
+    })
+  } catch (error) {
+    if (errorName(error) === 'DataError' || errorName(error) === 'OperationError') {
+      return false
     }
 
     throw error
