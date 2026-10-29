@@ -37,6 +37,7 @@ import {
   nativeGcm as webGcm,
   nativeMac as webMac,
 } from './web.js'
+import type { Session } from '../chacha20/core.js'
 import type { Format } from '../compression/formats.js'
 import { rsaJwk } from '../rsa/key.js'
 import { curvePkcs8, curveSpki } from './keys.js'
@@ -723,6 +724,48 @@ export async function nativeEd25519Sign(seed: Uint8Array, message: Uint8Array): 
 
 export async function nativeEd25519Verify(publicKey: Uint8Array, message: Uint8Array, signature: Uint8Array): Promise<boolean | undefined> {
   return nativeEd25519VerifySync(publicKey, message, signature)
+}
+
+export function nativeChacha20Poly1305Available(): boolean {
+  return supportsCipher('chacha20-poly1305')
+}
+
+export function nativeChacha20Poly1305(key: Uint8Array, nonce: Uint8Array, aad: Uint8Array, decrypting: boolean): Session | undefined {
+  if (!nativeChacha20Poly1305Available()) {
+    return undefined
+  }
+
+  const cipher = decrypting
+    ? createDecipheriv('chacha20-poly1305', key, nonce, { authTagLength: 16 })
+    : createCipheriv('chacha20-poly1305', key, nonce, { authTagLength: 16 })
+
+  cipher.setAAD(aad)
+
+  return {
+    update(input, output) {
+      const result = cipher.update(input)
+
+      output.set(result)
+      result.fill(0)
+    },
+
+    seal() {
+      cipher.final()
+
+      return Uint8Array.from((cipher as crypto.CipherChaCha20Poly1305).getAuthTag())
+    },
+
+    open(tag) {
+      (cipher as crypto.DecipherChaCha20Poly1305).setAuthTag(tag)
+
+      try {
+        cipher.final()
+        return true
+      } catch {
+        return false
+      }
+    },
+  }
 }
 
 export const COMPRESSION_OFFLOAD = { compress: 1 << 17, decompress: 1 << 20 }

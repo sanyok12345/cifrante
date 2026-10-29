@@ -11,6 +11,7 @@ import { math } from './math.js'
 import { rsa } from './rsa/rsa.js'
 import { x25519 } from './x25519/x25519.js'
 import { ed25519 } from './ed25519/ed25519.js'
+import { chacha20 } from './chacha20/chacha20.js'
 import { deflate, gzip, zlib } from './compression/compression.js'
 import { adler32 } from './adler32.js'
 import { crc32 } from './crc32.js'
@@ -24,7 +25,7 @@ import {
   AuthenticationError,
 } from './errors.js'
 
-export { random, bytes, md5, sha1, sha256, sha384, sha512, aes, hmac, kdf, math, rsa, x25519, ed25519, gzip, deflate, zlib, crc32, adler32 }
+export { random, bytes, md5, sha1, sha256, sha384, sha512, aes, hmac, kdf, math, rsa, x25519, ed25519, chacha20, gzip, deflate, zlib, crc32, adler32 }
 
 export {
   CifranteError,
@@ -49,6 +50,8 @@ export type { RsaPublicKey, RsaPrivateKey, RsaJsonWebKey, RsaKeyInput, RsaOaepOp
 export type { Factors, MathCrypto } from './math.js'
 export type { X25519, X25519KeyPair } from './x25519/x25519.js'
 export type { Ed25519, Ed25519KeyPair } from './ed25519/ed25519.js'
+export type { ChaCha20 } from './chacha20/chacha20.js'
+export type { AeadOptions } from './aead.js'
 export type { Compression, CompressionOptions, Compress, Decompress } from './compression/compression.js'
 export type { Compression as Gzip, CompressionOptions as GzipOptions } from './compression/compression.js'
 export type { Checksum, ChecksumState } from './crc32.js'
@@ -68,6 +71,7 @@ export default {
   rsa,
   x25519,
   ed25519,
+  chacha20,
   gzip,
   deflate,
   zlib,

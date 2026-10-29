@@ -8,7 +8,7 @@ MEMORY = -Wl,--initial-memory=131072 -Wl,--max-memory=131072
 LDFLAGS = -Wl,--no-entry -Wl,--export-memory -Wl,--strip-all -Wl,--compress-relocations \
   -Wl,--fatal-warnings -Wl,-z,stack-size=$(STACK) $(MEMORY)
 OUT_DIR = ../build/wasm
-MODULES = $(addprefix $(OUT_DIR)/,sha256.wasm sha512.wasm aes.wasm aes.simd.wasm aes.relaxed.wasm pbkdf2.wasm x25519.wasm deflate.wasm ed25519.wasm)
+MODULES = $(addprefix $(OUT_DIR)/,sha256.wasm sha512.wasm aes.wasm aes.simd.wasm aes.relaxed.wasm pbkdf2.wasm x25519.wasm deflate.wasm ed25519.wasm chacha20.wasm)
 HASH_HEADERS = hash/hash.h hash/buffer.h wasm.h
 AES_MODES = aes/modes.c aes/ige.c aes/cbc.c aes/ctr.c aes/gcm.c
 AES_HEADERS = aes/aes.h aes/modes.h wasm.h
@@ -39,6 +39,9 @@ $(OUT_DIR)/x25519.wasm: x25519/x25519.c curve25519/field.h wasm.h Makefile
 $(OUT_DIR)/ed25519.wasm: STACK = 65536
 $(OUT_DIR)/ed25519.wasm: MEMORY = -Wl,--max-memory=2147483648
 $(OUT_DIR)/ed25519.wasm: ed25519/ed25519.c hash/sha512.c curve25519/field.h $(HASH_HEADERS) Makefile
+
+$(OUT_DIR)/chacha20.wasm: MEMORY = -Wl,--max-memory=2147483648
+$(OUT_DIR)/chacha20.wasm: chacha20/chacha20.c wasm.h Makefile
 
 $(OUT_DIR)/deflate.wasm: STACK = 65536
 $(OUT_DIR)/deflate.wasm: MEMORY = -Wl,--max-memory=2147483648

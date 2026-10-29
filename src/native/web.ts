@@ -3,6 +3,7 @@ import { AuthenticationError, InvalidInputError, UnsupportedError } from '../err
 import { lazy } from '../lazy.js'
 import { rsaJwk } from '../rsa/key.js'
 import { curvePkcs8 } from './keys.js'
+import type { Session } from '../chacha20/core.js'
 import type { Format } from '../compression/formats.js'
 import type {
   NativeAead,
@@ -683,6 +684,14 @@ export async function nativeEd25519Verify(
 
     throw error
   }
+}
+
+export function nativeChacha20Poly1305Available(): boolean {
+  return false
+}
+
+export function nativeChacha20Poly1305(_key: Uint8Array, _nonce: Uint8Array, _aad: Uint8Array, _decrypting: boolean): Session | undefined {
+  return undefined
 }
 
 export const COMPRESSION_OFFLOAD = { compress: 1 << 22, decompress: 1 << 20 }
