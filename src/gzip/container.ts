@@ -1,5 +1,6 @@
 import { InvalidInputError } from '../errors.js'
 import { crc32Update as crc32 } from '../crc32.js'
+import { deflateWasm, inflateWasm } from '../wasm/deflate.js'
 import { deflate } from './deflate.js'
 import { inflate } from './inflate.js'
 
@@ -8,6 +9,7 @@ const FLAG_EXTRA = 0x04
 const FLAG_NAME = 0x08
 const FLAG_COMMENT = 0x10
 const FLAG_RESERVED = 0xe0
+const MAX_RATIO = 1032
 
 function invalid(): never {
   throw new InvalidInputError('Invalid gzip data')
@@ -79,7 +81,7 @@ function header(data: Uint8Array, offset: number): number {
 }
 
 export function compressGzip(data: Uint8Array): Uint8Array {
-  const body = deflate(data)
+  const body = deflateWasm(data) ?? deflate(data)
   const output = new Uint8Array(10 + body.length + 8)
 
   output.set([0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff])
@@ -92,11 +94,14 @@ export function compressGzip(data: Uint8Array): Uint8Array {
 
 export function decompressGzip(data: Uint8Array, limit: number): Uint8Array {
   const members: Uint8Array[] = []
+  const size = data.length >= 18 ? readUint32(data, data.length - 4) : 0
   let total = 0
   let offset = 0
 
   do {
-    const { output, end } = inflate(data, header(data, offset), limit - total)
+    const start = header(data, offset)
+    const hint = Math.min(size, (data.length - start) * MAX_RATIO + 1024)
+    const { output, end } = inflateWasm(data, start, limit - total, hint) ?? inflate(data, start, limit - total, hint)
 
     if (readUint32(data, end) !== crc32(output) || readUint32(data, end + 4) !== output.length >>> 0) {
       invalid()

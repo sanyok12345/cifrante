@@ -276,9 +276,10 @@ export function inflate(
   data: Uint8Array,
   offset: number,
   limit: number,
+  hint: number,
 ): { output: Uint8Array, end: number } {
   const reader = new BitReader(data, offset)
-  const output = new Output(limit, (data.length - offset) * 4)
+  const output = new Output(limit, hint || (data.length - offset) * 4)
   let final = 0
 
   while (!final) {
