@@ -63,6 +63,8 @@ export type {
   NativeSealed,
 } from './types.js'
 
+const DENO = typeof (globalThis as { Deno?: unknown }).Deno === 'object'
+
 let hashes: Set<string> | undefined
 let ciphers: Set<string> | undefined
 
@@ -266,7 +268,7 @@ export async function nativePbkdf2(
   iterations: number,
   length: number,
 ): Promise<Uint8Array | undefined> {
-  if (!supportsHash(hash) || iterations > 0x7fffffff || length > 0x7fffffff) {
+  if (DENO || !supportsHash(hash) || iterations > 0x7fffffff || length > 0x7fffffff) {
     return undefined
   }
 
@@ -304,7 +306,7 @@ export function nativePbkdf2Sync(
   iterations: number,
   length: number,
 ): Uint8Array | undefined {
-  if (!supportsHash(hash) || iterations > 0x7fffffff || length > 0x7fffffff) {
+  if (DENO || !supportsHash(hash) || iterations > 0x7fffffff || length > 0x7fffffff) {
     return undefined
   }
 
@@ -339,7 +341,8 @@ export function nativeCipher(
   key: Uint8Array,
 ): NativeCipher {
   const name = `aes-${key.length * 8}-${mode}`
-  const prepare = lazy(() => supportsCipher(name) ? createSecretKey(key) : undefined)
+  const usable = (): boolean => !(DENO && mode === 'cbc') && supportsCipher(name)
+  const prepare = lazy(() => usable() ? createSecretKey(key) : undefined)
   const web = lazy(() => webCipher(mode, key))
 
   async function offload<T>(
@@ -416,7 +419,7 @@ export function nativeCipher(
   }
 
   return {
-    available: () => supportsCipher(name),
+    available: usable,
     stream,
     encrypt: (iv, data) => offload(data, () => web().encrypt(iv, data), () => operate(iv, data, false)),
     decrypt: (iv, data) => offload(data, () => web().decrypt(iv, data), () => operate(iv, data, true)),
@@ -431,7 +434,7 @@ export function nativeCipher(
 
 export function nativeGcm(key: Uint8Array): NativeAead {
   const name = `aes-${key.length * 8}-gcm` as 'aes-128-gcm'
-  const prepare = lazy(() => supportsCipher(name) ? createSecretKey(key) : undefined)
+  const prepare = lazy(() => !DENO && supportsCipher(name) ? createSecretKey(key) : undefined)
   const web = lazy(() => webGcm(key))
 
   function seal(
@@ -484,7 +487,7 @@ export function nativeGcm(key: Uint8Array): NativeAead {
   }
 
   return {
-    available: (nonce) => supportsCipher(name) && nonce.length === 12,
+    available: (nonce) => !DENO && supportsCipher(name) && nonce.length === 12,
     async encrypt(nonce, data, aad, tagLength) {
       const offloaded = data.length + aad.length >= OFFLOAD && web().available(nonce)
         ? await web().encrypt(nonce, data, aad, tagLength)
@@ -604,7 +607,7 @@ export function nativeRsaSignature(
   }
 
   function verifySync(data: Uint8Array, signature: Uint8Array): boolean | undefined {
-    const secret = prepare()
+    const secret = DENO ? undefined : prepare()
 
     return secret === undefined ? undefined : crypto.verify(hash, data, { key: secret, padding, saltLength }, signature)
   }
@@ -654,7 +657,7 @@ export function nativeRsaPublic(
   e: bigint,
   data: Uint8Array,
 ): Uint8Array | undefined {
-  const key = createRsaKey({ n, e })
+  const key = DENO ? undefined : createRsaKey({ n, e })
 
   return key === undefined ? undefined : wiped(publicEncrypt({ key, padding: constants.RSA_NO_PADDING }, data))
 }
