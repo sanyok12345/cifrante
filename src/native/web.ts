@@ -1,4 +1,4 @@
-import { bigIntToBytes, bytesToBigInt, decodeBase64Url, encodeBase64 } from '../bytes.js'
+import { bigIntToBytes, bytesToBigInt, decodeBase64Url, encodeBase64Url } from '../bytes.js'
 import { AuthenticationError, InvalidInputError, UnsupportedError } from '../errors.js'
 import { lazy } from '../lazy.js'
 import { rsaJwk } from '../rsa/key.js'
@@ -578,10 +578,7 @@ export function nativeRsaPrivate(
 }
 
 function integerBase64Url(value: bigint): string {
-  return encodeBase64(bigIntToBytes(value))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '')
+  return encodeBase64Url(bigIntToBytes(value))
 }
 
 function supportsRsaLabel(label: Uint8Array): boolean {
