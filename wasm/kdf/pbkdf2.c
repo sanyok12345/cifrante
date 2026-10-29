@@ -426,6 +426,11 @@ uint32_t password_finalize(void)
     {
       return status;
     }
+
+    for (uint32_t i = state.digest_size; i < sizeof(state.key); i++)
+    {
+      state.key[i] = 0;
+    }
   }
 
   for (uint32_t i = 0; i < state.block_size; i++)
