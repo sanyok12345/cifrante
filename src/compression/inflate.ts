@@ -1,6 +1,7 @@
 import { InvalidInputError } from '../errors.js'
 import { lazy } from '../lazy.js'
 import {
+  CORRUPT_DATA,
   DISTANCE_BASE,
   DISTANCE_EXTRA,
   END_OF_BLOCK,
@@ -15,7 +16,7 @@ const CODE_LENGTH_ORDER = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2
 type Huffman = { counts: Uint16Array, symbols: Uint16Array }
 
 function invalid(): never {
-  throw new InvalidInputError('Invalid gzip data')
+  throw new InvalidInputError(CORRUPT_DATA)
 }
 
 function huffman(lengths: Uint8Array): Huffman {

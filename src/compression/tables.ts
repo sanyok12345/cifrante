@@ -37,3 +37,6 @@ export function fixedLiteralLengths(): Uint8Array {
 export function fixedDistanceLengths(): Uint8Array {
   return new Uint8Array(30).fill(5)
 }
+
+export const CORRUPT_DATA = 'Invalid compressed data'
+export const MAX_RATIO = 1032

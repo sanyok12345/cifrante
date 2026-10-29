@@ -37,6 +37,7 @@ import {
   nativeGcm as webGcm,
   nativeMac as webMac,
 } from './web.js'
+import type { Format } from '../compression/formats.js'
 import { rsaJwk } from '../rsa/key.js'
 import { x25519Pkcs8, x25519Spki } from './x25519.js'
 import type {
@@ -689,21 +690,34 @@ export async function nativeX25519Shared(
   return nativeX25519SharedSync(privateKey, publicKey)
 }
 
-export const GZIP_OFFLOAD = { compress: 1 << 17, decompress: 1 << 20 }
+export const COMPRESSION_OFFLOAD = { compress: 1 << 17, decompress: 1 << 20 }
 
 type Inflated = { buffer: Uint8Array, engine: { bytesWritten: number } }
+type Callback = (error: Error | null, result: Uint8Array) => void
+type Options = zlib.ZlibOptions & { info?: boolean }
+
+const ZLIB: Record<Format, {
+  compress(data: Uint8Array, callback: Callback): void
+  compressSync(data: Uint8Array): Uint8Array
+  decompress(data: Uint8Array, options: Options, callback: Callback): void
+  decompressSync(data: Uint8Array, options: Options): Uint8Array
+}> = {
+  gzip: { compress: zlib.gzip, compressSync: zlib.gzipSync, decompress: zlib.gunzip, decompressSync: zlib.gunzipSync },
+  deflate: { compress: zlib.deflateRaw, compressSync: zlib.deflateRawSync, decompress: zlib.inflateRaw, decompressSync: zlib.inflateRawSync },
+  zlib: { compress: zlib.deflate, compressSync: zlib.deflateSync, decompress: zlib.inflate, decompressSync: zlib.inflateSync },
+}
 
 function bytesOf(buffer: Uint8Array): Uint8Array {
   return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
 }
 
-function gunzipOptions(limit: number): zlib.ZlibOptions & { info: true } {
+function inflateOptions(limit: number): Options {
   return limit < kMaxLength ? { info: true, maxOutputLength: Math.max(limit, 1) } : { info: true }
 }
 
-function inflated(input: Uint8Array, limit: number, { buffer, engine }: Inflated): Uint8Array {
+function inflated(format: Format, input: Uint8Array, limit: number, { buffer, engine }: Inflated): Uint8Array {
   if (engine.bytesWritten !== input.length) {
-    throw new InvalidInputError('Invalid gzip data')
+    throw new InvalidInputError(`Invalid ${format} data`)
   }
 
   if (buffer.length > limit) {
@@ -713,7 +727,7 @@ function inflated(input: Uint8Array, limit: number, { buffer, engine }: Inflated
   return bytesOf(buffer)
 }
 
-function gunzipError(error: unknown): never {
+function inflateError(format: Format, error: unknown): never {
   const code = error !== null && typeof error === 'object' && 'code' in error ? error.code : undefined
 
   if (code === 'ERR_BUFFER_TOO_LARGE') {
@@ -721,39 +735,39 @@ function gunzipError(error: unknown): never {
   }
 
   if (typeof code === 'string' && code.startsWith('Z_')) {
-    throw new InvalidInputError('Invalid gzip data')
+    throw new InvalidInputError(`Invalid ${format} data`)
   }
 
   throw error
 }
 
-export function nativeGzip(data: Uint8Array): Promise<Uint8Array> {
+export function nativeCompress(format: Format, data: Uint8Array): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
-    zlib.gzip(data, (error, result) => error ? reject(error) : resolve(bytesOf(result)))
+    ZLIB[format].compress(data, (error, result) => error ? reject(error) : resolve(bytesOf(result)))
   })
 }
 
-export function nativeGzipSync(data: Uint8Array): Uint8Array {
-  return bytesOf(zlib.gzipSync(data))
+export function nativeCompressSync(format: Format, data: Uint8Array): Uint8Array {
+  return bytesOf(ZLIB[format].compressSync(data))
 }
 
-export async function nativeGunzip(data: Uint8Array, limit: number): Promise<Uint8Array> {
+export async function nativeDecompress(format: Format, data: Uint8Array, limit: number): Promise<Uint8Array> {
   try {
     const result = await new Promise<Inflated>((resolve, reject) => {
-      zlib.gunzip(data, gunzipOptions(limit), (error, result) =>
+      ZLIB[format].decompress(data, inflateOptions(limit), (error, result) =>
         error ? reject(error) : resolve(result as unknown as Inflated))
     })
 
-    return inflated(data, limit, result)
+    return inflated(format, data, limit, result)
   } catch (error) {
-    return gunzipError(error)
+    return inflateError(format, error)
   }
 }
 
-export function nativeGunzipSync(data: Uint8Array, limit: number): Uint8Array {
+export function nativeDecompressSync(format: Format, data: Uint8Array, limit: number): Uint8Array {
   try {
-    return inflated(data, limit, zlib.gunzipSync(data, gunzipOptions(limit)) as unknown as Inflated)
+    return inflated(format, data, limit, ZLIB[format].decompressSync(data, inflateOptions(limit)) as unknown as Inflated)
   } catch (error) {
-    return gunzipError(error)
+    return inflateError(format, error)
   }
 }

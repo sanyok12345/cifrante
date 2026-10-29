@@ -3,6 +3,7 @@ import { AuthenticationError, InvalidInputError, UnsupportedError } from '../err
 import { lazy } from '../lazy.js'
 import { rsaJwk } from '../rsa/key.js'
 import { x25519Pkcs8 } from './x25519.js'
+import type { Format } from '../compression/formats.js'
 import type {
   NativeAead,
   NativeCipher,
@@ -626,17 +627,27 @@ export async function nativeX25519Shared(
   }
 }
 
-export const GZIP_OFFLOAD = { compress: 1 << 22, decompress: 1 << 20 }
+export const COMPRESSION_OFFLOAD = { compress: 1 << 22, decompress: 1 << 20 }
+
+const STREAM_FORMATS: Record<Format, CompressionFormat> = { gzip: 'gzip', deflate: 'deflate-raw', zlib: 'deflate' }
 
 type Compression = typeof CompressionStream | typeof DecompressionStream
 
 async function pipe(
   Stream: Compression,
+  format: Format,
   data: Uint8Array,
   limit: number,
   guard: () => void,
 ): Promise<Uint8Array | undefined> {
-  const stream = new Stream('gzip')
+  let stream: CompressionStream | DecompressionStream
+
+  try {
+    stream = new Stream(STREAM_FORMATS[format])
+  } catch {
+    return undefined
+  }
+
   const writer = stream.writable.getWriter()
   const reader = stream.readable.getReader()
   const chunks: Uint8Array[] = []
@@ -681,26 +692,27 @@ async function pipe(
   return output
 }
 
-export async function nativeGzip(data: Uint8Array): Promise<Uint8Array | undefined> {
+export async function nativeCompress(format: Format, data: Uint8Array): Promise<Uint8Array | undefined> {
   return typeof CompressionStream === 'function'
-    ? pipe(CompressionStream, data, Infinity, () => {})
+    ? pipe(CompressionStream, format, data, Infinity, () => {})
     : undefined
 }
 
-export function nativeGzipSync(_data: Uint8Array): Uint8Array | undefined {
+export function nativeCompressSync(_format: Format, _data: Uint8Array): Uint8Array | undefined {
   return undefined
 }
 
-export function nativeGunzipSync(_data: Uint8Array, _limit: number): Uint8Array | undefined {
-  return undefined
-}
-
-export async function nativeGunzip(
+export async function nativeDecompress(
+  format: Format,
   data: Uint8Array,
   limit: number,
   guard: () => void,
 ): Promise<Uint8Array | undefined> {
   return typeof DecompressionStream === 'function'
-    ? pipe(DecompressionStream, data, limit, guard)
+    ? pipe(DecompressionStream, format, data, limit, guard)
     : undefined
+}
+
+export function nativeDecompressSync(_format: Format, _data: Uint8Array, _limit: number): Uint8Array | undefined {
+  return undefined
 }

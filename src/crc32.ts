@@ -3,14 +3,14 @@ import { lazy } from './lazy.js'
 import { nativeCrc32 } from './native/web.js'
 import type { Data } from './types.js'
 
-export interface Crc32State {
+export interface ChecksumState {
   update(data: Data): this
   digest(): number
 }
 
-export interface Crc32 {
+export interface Checksum {
   (data: Data): number
-  create(): Crc32State
+  create(): ChecksumState
 }
 
 const tables = /* @__PURE__ */ lazy(() => {
@@ -60,7 +60,7 @@ export function crc32Update(data: Uint8Array, previous = 0): number {
   return nativeCrc32(data, previous) ?? compute(data, previous)
 }
 
-class State implements Crc32State {
+class State implements ChecksumState {
   private value = 0
 
   update(data: Data): this {
@@ -74,7 +74,7 @@ class State implements Crc32State {
   }
 }
 
-export const crc32: Crc32 = /* @__PURE__ */ Object.assign(
+export const crc32: Checksum = /* @__PURE__ */ Object.assign(
   (data: Data): number => crc32Update(toBytesView(data)),
-  { create: (): Crc32State => new State() },
+  { create: (): ChecksumState => new State() },
 )

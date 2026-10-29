@@ -1,6 +1,7 @@
 import { decodeBase64 } from '../bytes.js'
 import { InvalidInputError } from '../errors.js'
 import { lazy } from '../lazy.js'
+import { CORRUPT_DATA } from '../compression/tables.js'
 import source from '../../build/wasm/deflate.wasm'
 
 type DeflateExports = WebAssembly.Exports & {
@@ -136,7 +137,7 @@ export function inflateWasm(
     }
 
     if (status !== STATUS_FULL) {
-      throw new InvalidInputError('Invalid gzip data')
+      throw new InvalidInputError(CORRUPT_DATA)
     }
 
     if (capacity >= limit) {
