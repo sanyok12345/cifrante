@@ -50,6 +50,7 @@ import type {
   NativeOaep,
   NativeStream,
   NativeRsaKey,
+  NativeRsaSignature,
   NativeSealed,
 } from './types.js'
 
@@ -585,6 +586,67 @@ export function nativeOaep(
     encryptSync,
     decryptSync,
   }
+}
+
+export function nativeRsaSignature(
+  key: NativeRsaKey,
+  scheme: 'pkcs1' | 'pss',
+  hash: string,
+  saltLength: number,
+): NativeRsaSignature {
+  const prepare = lazy(() => supportsHash(hash) ? createRsaKey(key) : undefined)
+  const padding = scheme === 'pss' ? constants.RSA_PKCS1_PSS_PADDING : constants.RSA_PKCS1_PADDING
+
+  function signSync(data: Uint8Array): Uint8Array | undefined {
+    const secret = prepare()
+
+    return secret === undefined ? undefined : Uint8Array.from(crypto.sign(hash, data, { key: secret, padding, saltLength }))
+  }
+
+  function verifySync(data: Uint8Array, signature: Uint8Array): boolean | undefined {
+    const secret = prepare()
+
+    return secret === undefined ? undefined : crypto.verify(hash, data, { key: secret, padding, saltLength }, signature)
+  }
+
+  return {
+    sign: async data => signSync(data),
+    verify: async (data, signature) => verifySync(data, signature),
+    signSync,
+    verifySync,
+  }
+}
+
+type GeneratedRsaKey = { n: bigint, e: bigint, d: bigint, p: bigint, q: bigint }
+
+function generatedKey(privateKey: KeyObject): GeneratedRsaKey {
+  const jwk = privateKey.export({ format: 'jwk' })
+  const integer = (value: string | undefined): bigint => {
+    const hex = Buffer.from(value ?? '', 'base64url').toString('hex')
+
+    return hex ? BigInt(`0x${hex}`) : 0n
+  }
+
+  return { n: integer(jwk.n), e: integer(jwk.e), d: integer(jwk.d), p: integer(jwk.p), q: integer(jwk.q) }
+}
+
+export function nativeRsaGenerateSync(bits: number, exponent: bigint): GeneratedRsaKey | undefined {
+  if (exponent > BigInt(Number.MAX_SAFE_INTEGER)) {
+    return undefined
+  }
+
+  return generatedKey(crypto.generateKeyPairSync('rsa', { modulusLength: bits, publicExponent: Number(exponent) }).privateKey)
+}
+
+export function nativeRsaGenerate(bits: number, exponent: bigint): Promise<GeneratedRsaKey | undefined> {
+  if (exponent > BigInt(Number.MAX_SAFE_INTEGER)) {
+    return Promise.resolve(undefined)
+  }
+
+  return new Promise((resolve, reject) => {
+    crypto.generateKeyPair('rsa', { modulusLength: bits, publicExponent: Number(exponent) }, (error, _publicKey, privateKey) =>
+      error ? reject(error) : resolve(generatedKey(privateKey)))
+  })
 }
 
 export function nativeRsaPublic(

@@ -46,7 +46,23 @@ export type { CbcOptions } from './aes/cbc.js'
 export type { GcmOptions, GcmOperationOptions, Sealed, AeadCipher } from './aes/gcm.js'
 export type { Hmac, HmacState, HMAC } from './hmac.js'
 export type { HashName, Pbkdf2Options, HkdfOptions, Pbkdf2, Hkdf, KDF } from './kdf.js'
-export type { RsaPublicKey, RsaPrivateKey, RsaJsonWebKey, RsaKeyInput, RsaOaepOptions, RsaOaep, RSA } from './rsa/rsa.js'
+export type {
+  RsaPublicKey,
+  RsaPrivateKey,
+  RsaJsonWebKey,
+  RsaKeyInput,
+  RsaOaepOptions,
+  RsaOaep,
+  RsaPssOptions,
+  RsaSignatureOptions,
+  RsaSignature,
+  RsaEncodeOptions,
+  RsaKeyFormat,
+  RsaKeyType,
+  RsaKeyOptions,
+  RsaKeyPair,
+  RSA,
+} from './rsa/rsa.js'
 export type { Factors, MathCrypto } from './math.js'
 export type { X25519, X25519KeyPair } from './x25519/x25519.js'
 export type { Ed25519, Ed25519KeyPair } from './ed25519/ed25519.js'

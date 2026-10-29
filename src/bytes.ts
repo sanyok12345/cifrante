@@ -177,6 +177,10 @@ export function decodeBase64(data: string): Uint8Array<ArrayBuffer> {
   return result
 }
 
+export function encodeBase64Url(data: Binary): string {
+  return encodeBase64(data).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
 export function decodeBase64Url(data: string): Uint8Array<ArrayBuffer> {
   if (typeof data !== 'string' || /[^A-Za-z0-9_-]/.test(data) || data.length % 4 === 1) {
     throw new InvalidInputError('Expected unpadded Base64url')

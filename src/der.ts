@@ -107,3 +107,85 @@ export class DerReader {
     }
   }
 }
+
+function element(tag: number, content: Uint8Array): Uint8Array {
+  const header = [tag]
+
+  if (content.length < 0x80) {
+    header.push(content.length)
+  } else {
+    const length: number[] = []
+
+    for (let value = content.length; value > 0; value = Math.floor(value / 256)) {
+      length.unshift(value & 0xff)
+    }
+
+    header.push(0x80 | length.length, ...length)
+  }
+
+  const output = new Uint8Array(header.length + content.length)
+
+  output.set(header)
+  output.set(content, header.length)
+
+  return output
+}
+
+export function derSequence(...children: Uint8Array[]): Uint8Array {
+  const content = new Uint8Array(children.reduce((sum, child) => sum + child.length, 0))
+  let offset = 0
+
+  for (const child of children) {
+    content.set(child, offset)
+    offset += child.length
+  }
+
+  return element(TAG.sequence, content)
+}
+
+export function derInteger(value: bigint): Uint8Array {
+  let hex = value.toString(16)
+
+  if (hex.length % 2) {
+    hex = `0${hex}`
+  }
+
+  if (parseInt(hex.slice(0, 2), 16) & 0x80) {
+    hex = `00${hex}`
+  }
+
+  return element(TAG.integer, Uint8Array.from(hex.match(/../g)!, byte => parseInt(byte, 16)))
+}
+
+export function derOid(dotted: string): Uint8Array {
+  const [first, second, ...rest] = dotted.split('.').map(Number)
+  const bytes: number[] = []
+
+  for (const part of [first * 40 + second, ...rest]) {
+    const chunk = [part & 0x7f]
+
+    for (let value = part >>> 7; value > 0; value >>>= 7) {
+      chunk.unshift(0x80 | (value & 0x7f))
+    }
+
+    bytes.push(...chunk)
+  }
+
+  return element(TAG.oid, Uint8Array.from(bytes))
+}
+
+export function derNull(): Uint8Array {
+  return Uint8Array.of(0x05, 0x00)
+}
+
+export function derBitString(data: Uint8Array): Uint8Array {
+  const content = new Uint8Array(data.length + 1)
+
+  content.set(data, 1)
+
+  return element(TAG.bitString, content)
+}
+
+export function derOctetString(data: Uint8Array): Uint8Array {
+  return element(TAG.octetString, data)
+}

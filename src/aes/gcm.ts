@@ -5,7 +5,7 @@ import { SLICE, watch } from '../yield.js'
 import { aesWasmAvailable, createAesWasm } from '../wasm/aes.js'
 import { nativeGcm } from '../native/web.js'
 import type { AeadCipher, AeadOptions, Sealed } from '../aead.js'
-import type { Binary, Data, Disposal } from '../types.js'
+import type { Binary, Disposal } from '../types.js'
 import { AesBlock, DISPOSE, disposable, keyBytes, lifecycle } from './block.js'
 
 export interface GcmOptions {

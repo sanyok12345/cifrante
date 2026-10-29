@@ -1,7 +1,9 @@
-import { bytesToBigInt, decodeBase64, decodeBase64Url, toBinaryView } from '../bytes.js'
-import { DerReader, TAG } from '../der.js'
+import { bigIntToBytes, bytesToBigInt, decodeBase64, decodeBase64Url, encodeBase64, encodeBase64Url, toBinaryView } from '../bytes.js'
+import { DerReader, TAG, derBitString, derInteger, derNull, derOctetString, derOid, derSequence } from '../der.js'
 import { InvalidInputError, InvalidKeyError, UnsupportedError } from '../errors.js'
 import type { Binary } from '../types.js'
+import { math } from '../math.js'
+import { inverseMod } from './key.js'
 import type { RsaPrivateKey, RsaPublicKey } from './rsa.js'
 
 export interface RsaJsonWebKey {
@@ -190,4 +192,115 @@ export function decodePrivateKey(input: RsaKeyInput): RsaPrivateKey {
       ? { n: jwkInteger(n), d: jwkInteger(d) }
       : { n: jwkInteger(n), d: jwkInteger(d), p: jwkInteger(p), q: jwkInteger(q) },
   ))
+}
+
+export type RsaKeyFormat = 'pem' | 'der' | 'jwk'
+
+export type RsaKeyType = 'spki' | 'pkcs1' | 'pkcs8'
+
+export interface RsaEncodeOptions {
+  format: RsaKeyFormat
+  type?: RsaKeyType
+}
+
+const RSA_ENCRYPTION = '1.2.840.113549.1.1.1'
+
+function pemOf(label: string, der: Uint8Array): string {
+  const body = encodeBase64(der).match(/.{1,64}/g) ?? []
+
+  return `-----BEGIN ${label}-----\n${body.join('\n')}\n-----END ${label}-----\n`
+}
+
+function algorithmIdentifier(): Uint8Array {
+  return derSequence(derOid(RSA_ENCRYPTION), derNull())
+}
+
+function privateParts(key: RsaPrivateKey): RsaPrivateKey & { e: bigint, p: bigint, q: bigint } {
+  if (key.p === undefined || key.q === undefined) {
+    throw new InvalidKeyError('Encoding an RSA private key requires its prime factors')
+  }
+
+  const lambda = (key.p - 1n) / math.gcd(key.p - 1n, key.q - 1n) * (key.q - 1n)
+
+  return { ...key, e: inverseMod(key.d, lambda), p: key.p, q: key.q }
+}
+
+function jwkOf(key: RsaPublicKey | RsaPrivateKey): RsaJsonWebKey {
+  const integer = (value: bigint): string => encodeBase64Url(bigIntToBytes(value))
+
+  if (!('d' in key)) {
+    return { kty: 'RSA', n: integer(key.n), e: integer(key.e) }
+  }
+
+  const { n, e, d, p, q } = privateParts(key)
+
+  return {
+    kty: 'RSA',
+    n: integer(n),
+    e: integer(e),
+    d: integer(d),
+    p: integer(p),
+    q: integer(q),
+    dp: integer(d % (p - 1n)),
+    dq: integer(d % (q - 1n)),
+    qi: integer(inverseMod(q, p)),
+  }
+}
+
+function derOf(key: RsaPublicKey | RsaPrivateKey, type: RsaKeyType): { label: string, der: Uint8Array } {
+  if (!('d' in key)) {
+    const pkcs1 = derSequence(derInteger(key.n), derInteger(key.e))
+
+    switch (type) {
+      case 'spki':
+        return { label: 'PUBLIC KEY', der: derSequence(algorithmIdentifier(), derBitString(pkcs1)) }
+      case 'pkcs1':
+        return { label: 'RSA PUBLIC KEY', der: pkcs1 }
+      default:
+        throw new InvalidInputError('RSA public keys encode as spki or pkcs1')
+    }
+  }
+
+  const { n, e, d, p, q } = privateParts(key)
+  const pkcs1 = derSequence(
+    derInteger(0n),
+    derInteger(n),
+    derInteger(e),
+    derInteger(d),
+    derInteger(p),
+    derInteger(q),
+    derInteger(d % (p - 1n)),
+    derInteger(d % (q - 1n)),
+    derInteger(inverseMod(q, p)),
+  )
+
+  switch (type) {
+    case 'pkcs8':
+      return { label: 'PRIVATE KEY', der: derSequence(derInteger(0n), algorithmIdentifier(), derOctetString(pkcs1)) }
+    case 'pkcs1':
+      return { label: 'RSA PRIVATE KEY', der: pkcs1 }
+    default:
+      throw new InvalidInputError('RSA private keys encode as pkcs8 or pkcs1')
+  }
+}
+
+export function encodeKey(key: RsaPublicKey | RsaPrivateKey, options: RsaEncodeOptions): string | Uint8Array | RsaJsonWebKey {
+  if (!options || typeof options !== 'object') {
+    throw new InvalidInputError('RSA key encoding requires a format')
+  }
+
+  const type = options.type ?? ('d' in key ? 'pkcs8' : 'spki')
+
+  switch (options.format) {
+    case 'jwk':
+      return jwkOf(key)
+    case 'der':
+      return derOf(key, type).der
+    case 'pem': {
+      const { label, der } = derOf(key, type)
+      return pemOf(label, der)
+    }
+    default:
+      throw new InvalidInputError('RSA key format must be pem, der or jwk')
+  }
 }

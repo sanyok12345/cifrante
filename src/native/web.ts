@@ -1,4 +1,4 @@
-import { bigIntToBytes, encodeBase64 } from '../bytes.js'
+import { bigIntToBytes, bytesToBigInt, decodeBase64Url, encodeBase64 } from '../bytes.js'
 import { AuthenticationError, InvalidInputError, UnsupportedError } from '../errors.js'
 import { lazy } from '../lazy.js'
 import { rsaJwk } from '../rsa/key.js'
@@ -12,6 +12,7 @@ import type {
   NativeAddon,
   NativeOaep,
   NativeRsaKey,
+  NativeRsaSignature,
 } from './types.js'
 
 export type { NativeHash, NativeSealed } from './types.js'
@@ -469,6 +470,93 @@ export function nativeGcm(secret: Uint8Array): NativeAead {
       )
     },
   }
+}
+
+export function nativeRsaSignature(
+  key: NativeRsaKey,
+  scheme: 'pkcs1' | 'pss',
+  name: string,
+  saltLength: number,
+): NativeRsaSignature {
+  const hash = hashName(name)
+  const algorithm = scheme === 'pss' ? 'RSA-PSS' : 'RSASSA-PKCS1-v1_5'
+  const parameters = scheme === 'pss' ? { name: algorithm, saltLength } : { name: algorithm }
+  const prepare = lazy(async (): Promise<WebKey | undefined> => {
+    const subtle = globalThis.crypto?.subtle
+
+    if (!hash || !subtle || key.n < (1n << 511n)) {
+      return undefined
+    }
+
+    const jwk = rsaJwk(key, integerBase64Url)
+
+    if (!jwk) {
+      return undefined
+    }
+
+    const imported = await supported(subtle, `${algorithm}:key:${hash}:${key.d === undefined}`, () =>
+      subtle.importKey('jwk', jwk, { name: algorithm, hash }, false, [key.d === undefined ? 'verify' : 'sign']),
+    )
+
+    return imported ? { subtle, key: imported } : undefined
+  })
+
+  return {
+    async sign(data) {
+      const context = await prepare()
+
+      if (!context) {
+        return undefined
+      }
+
+      const output = await supported(context.subtle, `${algorithm}:sign:${hash}`, () =>
+        context.subtle.sign(parameters, context.key, source(data)),
+      )
+
+      return output === undefined ? undefined : new Uint8Array(output)
+    },
+
+    async verify(data, signature) {
+      const context = await prepare()
+
+      if (!context) {
+        return undefined
+      }
+
+      return supported(context.subtle, `${algorithm}:verify:${hash}`, () =>
+        context.subtle.verify(parameters, context.key, source(signature), source(data)),
+      )
+    },
+  }
+}
+
+type GeneratedRsaKey = { n: bigint, e: bigint, d: bigint, p: bigint, q: bigint }
+
+export function nativeRsaGenerateSync(_bits: number, _exponent: bigint): GeneratedRsaKey | undefined {
+  return undefined
+}
+
+export async function nativeRsaGenerate(bits: number, exponent: bigint): Promise<GeneratedRsaKey | undefined> {
+  const subtle = globalThis.crypto?.subtle
+
+  if (!subtle) {
+    return undefined
+  }
+
+  const generated = await supported(subtle, 'RSA-PSS:generate', () => subtle.generateKey(
+    { name: 'RSA-PSS', modulusLength: bits, publicExponent: bigIntToBytes(exponent), hash: 'SHA-256' },
+    true,
+    ['sign', 'verify'],
+  ))
+
+  if (generated === undefined) {
+    return undefined
+  }
+
+  const jwk = await subtle.exportKey('jwk', generated.privateKey)
+  const integer = (value: string | undefined): bigint => bytesToBigInt(decodeBase64Url(value ?? ''))
+
+  return { n: integer(jwk.n), e: integer(jwk.e), d: integer(jwk.d), p: integer(jwk.p), q: integer(jwk.q) }
 }
 
 export function nativeRsaPublic(

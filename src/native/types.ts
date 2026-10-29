@@ -71,6 +71,13 @@ export interface NativeRsaKey {
   q?: bigint
 }
 
+export interface NativeRsaSignature {
+  sign(data: Uint8Array): Promise<Uint8Array | undefined>
+  verify(data: Uint8Array, signature: Uint8Array): Promise<boolean | undefined>
+  signSync?(data: Uint8Array): Uint8Array | undefined
+  verifySync?(data: Uint8Array, signature: Uint8Array): boolean | undefined
+}
+
 export interface NativeOaep {
   encrypt(data: Uint8Array): Promise<Uint8Array | undefined>
   decrypt(data: Uint8Array): Promise<Uint8Array | undefined>
