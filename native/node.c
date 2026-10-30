@@ -3,14 +3,11 @@
  * SPDX-License-Identifier: MIT
  */
 
-#define NAPI_VERSION 8
-
-#include <node_api.h>
-#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "modes.h"
+#include "napi.h"
 #include "x25519.h"
 
 typedef struct
@@ -316,6 +313,11 @@ static napi_value supported(napi_env env, napi_callback_info info)
 
 NAPI_MODULE_INIT()
 {
+  if (!cifrante_napi_load())
+  {
+    return exports;
+  }
+
   napi_property_descriptor properties[] = {
       {"supported", NULL, supported, NULL, NULL, NULL, napi_enumerable, NULL},
       {"encrypt", NULL, encrypt, NULL, NULL, NULL, napi_enumerable, NULL},
